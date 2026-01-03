@@ -1,0 +1,89 @@
+[gd_scene load_steps=3 format=3 uid="uid://pdka4mwail78"]
+
+[ext_resource type="Theme" uid="uid://v5e5u3yd68es" path="res://default_theme.tres" id="1_pq8q7"]
+[ext_resource type="Script" uid="uid://df7fxx5neoyjm" path="res://root.gd" id="1_pyidc"]
+
+[node name="Root" type="Node2D"]
+script = ExtResource("1_pyidc")
+
+[node name="Base Elements" type="Node2D" parent="."]
+
+[node name="ColorRect" type="ColorRect" parent="Base Elements"]
+z_index = -99
+offset_right = 579.0
+offset_bottom = 351.0
+color = Color(0, 0, 0, 1)
+
+[node name="DebugTestFontSize" type="RichTextLabel" parent="Base Elements"]
+visible = false
+z_index = -99
+offset_right = 582.0
+offset_bottom = 353.0
+theme = ExtResource("1_pq8q7")
+bbcode_enabled = true
+text = "12345678901234567890123456789012345678901234567890123456789012345678901234567890
+00000000011111111112222222222333333333344444444445555555555666666666677777777778
+3
+4 [char=fa23]🫱
+5
+6[color=\"#ff0000\"] red
+7[/color]
+8[bgcolor=\"#003300\"] green
+9[/bgcolor]
+10
+1
+2
+3[fgcolor=\"#000099\"] blue
+4[/fgcolor]
+5
+6
+7[outline_size=1][outline_color=\"#ffff00\"] yellow
+8[/outline_color][/outline_size]
+9
+20
+1
+2
+3
+4
+5"
+scroll_active = false
+autowrap_mode = 0
+autowrap_trim_flags = 0
+
+[node name="Commands" type="RichTextLabel" parent="Base Elements"]
+z_index = -2
+offset_right = 582.0
+offset_bottom = 353.0
+theme = ExtResource("1_pq8q7")
+bbcode_enabled = true
+text = "Quit [ Q ] | New [ backspace ] | Help [ ? ] |
+[hr]"
+scroll_active = false
+autowrap_mode = 0
+autowrap_trim_flags = 0
+
+[node name="Help" type="RichTextLabel" parent="Base Elements"]
+visible = false
+z_index = -1
+offset_right = 582.0
+offset_bottom = 353.0
+theme = ExtResource("1_pq8q7")
+bbcode_enabled = true
+text = "
+
+There is no save. There is no load.
+"
+scroll_active = false
+autowrap_mode = 0
+autowrap_trim_flags = 0
+
+[node name="Animated ViewPort" type="Node2D" parent="."]
+
+[node name="ViewPort" type="RichTextLabel" parent="Animated ViewPort"]
+offset_right = 582.0
+offset_bottom = 353.0
+theme = ExtResource("1_pq8q7")
+bbcode_enabled = true
+scroll_active = false
+autowrap_mode = 0
+autowrap_trim_flags = 0
