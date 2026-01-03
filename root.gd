@@ -75,8 +75,6 @@ class CenteredArray2D extends Array2D:
 	func rect() -> Rect2:
 		# return a shape considering it as a full rectangle
 		var parent_shape = shape()
-		print("parent ", parent_shape)
-		print("center ", center)
 		return Rect2(-center.x,-center.y,parent_shape.x,parent_shape.y)
 	func debug():
 		var dims = rect()
@@ -116,26 +114,28 @@ class Renderer:
 	var be_commands: RichTextLabel
 	var be_help: RichTextLabel
 	var vp_container: Node2D
-	var ts: Vector2
+	var text_shape: Vector2
+	var text_center: Vector2
 	var charmap: Dictionary
 	
-	func _init(_be_container, _vp_container, _ts):
+	func _init(_be_container, _vp_container, _ts, _tc):
 		be_cr = _be_container.get_node_and_resource("ColorRect")[0]
 		be_dtfs = _be_container.get_node_and_resource("DebugTestFontSize")[0]
 		be_commands = _be_container.get_node_and_resource("Commands")[0]
 		be_help = _be_container.get_node_and_resource("Help")[0]
 		vp_container = _vp_container
-		ts = _ts
+		text_shape = _ts
+		text_center = _tc
 		
 		# setup dictionary of displays.
 		charmap = {
-			#enum m {STAIRS, WALL, FLOOR, DOOR, LOOT, MOB, LAST}
 			Level.m.STAIRS: '[color="#333333"]>[/color]',
 			Level.m.WALL: '[color="#666666"]#[/color]',
 			Level.m.FLOOR: '[color="#999999"].[/color]',
 			Level.m.DOOR: '[color="#cccc00"]#[/color]',
 			Level.m.LOOT: '[color="#00cc00"]?[/color]',
 			Level.m.MOB: '[color="#cc0000"]![/color]',
+			Level.m.LAST: ' ', # acts as empty as well
 		}
 	
 	func base_elements_default():
@@ -146,19 +146,31 @@ class Renderer:
 
 	func show_viewport(level: Level):
 		base_elements_default()
-		var center = level.player_location
+
 		var board = level.board
 		var viewport: RichTextLabel = vp_container.get_children()[0]
-		var map = "\n\n"
 		var dims: Rect2 = board.rect()
-		print(dims)
-		for r in range(dims.position.x, dims.position.x + dims.size.x):
-			for c in range(dims.position.y, dims.position.y + dims.size.y):
-				#print(r, c, center)
-				if r == center.x and c == center.y:
-					map += '[color="#00cc00"]@[/color]'
+
+		# align player's location as center. level center is always (0,0)
+		var player_loc = level.player_location
+		var delta = text_center + player_loc
+		#text_shape
+
+		# setup map/board/level text
+		var map = "\n\n"
+
+		# scan through the screen size.
+		for r in range(0, text_shape.x):
+			for c in range(0, text_shape.y):
+				# convert screen coordinate to play coordinate.
+				var cursor = Vector2(r,c) - delta
+				if not dims.has_point(cursor):
+					map += " "
 				else:
-					map += charmap[board.getv(r,c)]
+					if cursor == player_loc:
+						map += '[color="#00cc00"]@[/color]'
+					else:
+						map += charmap[board.getv(cursor.x, cursor.y)]
 			map += "\n"
 		viewport.text = map
 
@@ -166,7 +178,7 @@ var my_rng
 var tick
 var renderer
 func _ready():
-	renderer = Renderer.new(BaseElements, ViewPort, Vector2(25, 80))
+	renderer = Renderer.new(BaseElements, ViewPort, Vector2(25, 80), Vector2(11,40))
 	# TODO add seed from user here
 	my_rng = RNG.new(0)
 	tick = 0
