@@ -3,8 +3,10 @@
 [ext_resource type="Theme" uid="uid://v5e5u3yd68es" path="res://default_theme.tres" id="1_pq8q7"]
 [ext_resource type="Script" uid="uid://df7fxx5neoyjm" path="res://root.gd" id="1_pyidc"]
 
-[node name="Root" type="Node2D"]
+[node name="Root" type="Node2D" node_paths=PackedStringArray("BaseElements", "ViewPort")]
 script = ExtResource("1_pyidc")
+BaseElements = NodePath("Base Elements")
+ViewPort = NodePath("Animated ViewPort")
 
 [node name="Base Elements" type="Node2D" parent="."]
 
