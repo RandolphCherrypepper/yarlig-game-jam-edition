@@ -83,17 +83,20 @@ class CenteredArray2D extends Array2D:
 			for c in range(dims.position.y, dims.position.y + dims.size.y):
 				values += str(getv(r,c)) + " "
 			values += "\n"
+		print(values)
 
 class Level:
 	var rng
 	var level_number
+	var renderer
 	var player_location: Vector2
 	var board: CenteredArray2D
 	# always leave "STAIRS" at the start.
 	# always leave "LAST" at the end to get the valid length of the enum
 	enum m {STAIRS, WALL, FLOOR, DOOR, LOOT, MOB, LAST}
-	func _init(_rng, _level):
+	func _init(_rng, _level, _renderer):
 		rng = _rng
+		renderer = _renderer
 		# level alone makes the first level a bit too bleak.
 		level_number = _level + 1
 		board = CenteredArray2D.new(3*level_number, 3*level_number)
@@ -103,9 +106,16 @@ class Level:
 			for c in range(dims.position.y, dims.position.y + dims.size.y):
 				# TODO replace temporary fillin
 				board.setv(r,c,randi_range(m.STAIRS+1, m.LAST-1))
-		board.debug()
+		#board.debug()
 	func set_player_location(loc: Vector2):
 		player_location = loc
+	func move_player(change: Vector2):
+		player_location += change
+		draw(false)
+	func draw(swap=false):
+		renderer.fill_viewport(self, swap)
+		if swap:
+			renderer.swap_viewport()
 
 class Renderer:
 	var be_cr: ColorRect
@@ -165,18 +175,22 @@ class Renderer:
 		# if animation frame is 0, then 1-0=1. if frame is 1, then 1-1=0.
 		return vp_container.get_children()[1-animation_frame]
 
-	func fill_viewport(level: Level):
+	func fill_viewport(level: Level, inactive=true):
 		base_elements_default()
 		# determine which frame we're in.
 		var board = level.board
 		var dims: Rect2 = board.rect()
 		
-		# draw to the inactive_viewport
-		var viewport = get_inactive_viewport()
+		# draw to the inactive_viewport by default
+		var viewport
+		if inactive:
+			viewport = get_inactive_viewport()
+		else:
+			viewport = get_active_viewport()
 
 		# align player's location as center. level center is always (0,0)
 		var player_loc = level.player_location
-		var delta = text_center + player_loc
+		var delta = text_center - player_loc
 		#text_shape
 
 		# setup map/board/level text
@@ -190,14 +204,17 @@ class Renderer:
 				if not dims.has_point(cursor):
 					map += " "
 				else:
-					if cursor == player_loc and animation_frame == 0:
-						map += charmap[animation_frame]['player'] # '[color="#00cc00"]@[/color]'
+					#if (cursor + delta) == text_center:
+					if cursor == player_loc and (animation_frame == 0 or not inactive):
+						# only draw the character every even frame; unless the draw was force updated.
+						# this allows whatever is under the character to be shown on the odd frames.
+						map += charmap[animation_frame]['player']
 					else:
 						map += charmap[animation_frame][board.getv(cursor.x, cursor.y)]
 			map += "\n"
 		viewport.text = map
 
-	func render_viewport():
+	func swap_viewport():
 		var active_viewport = get_active_viewport()
 		var inactive_viewport = get_inactive_viewport()
 		# switch which is hidden and which is shown
@@ -218,16 +235,25 @@ func _ready():
 	my_rng = RNG.new(0)
 	tick = 0
 	var curr_level = 1
-	level = Level.new(my_rng, curr_level)
+	level = Level.new(my_rng, curr_level, renderer)
 	level.set_player_location(Vector2(0,0))
-	renderer.fill_viewport(level)
-	renderer.render_viewport()
+	level.draw(false)
 
 func _process(delta):
 	last_render += delta
 	if last_render < animation_rate:
 		# not time to update animation yet.
 		return
-	renderer.fill_viewport(level)
-	renderer.render_viewport()
+	#level.draw(false)
+	level.draw(true)
 	last_render = 0
+
+func _input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_up"):
+		level.move_player(Vector2(-1,0))
+	if event.is_action_pressed("ui_down"):
+		level.move_player(Vector2(1,0))
+	if event.is_action_pressed("ui_left"):
+		level.move_player(Vector2(0,-1))
+	if event.is_action_pressed("ui_right"):
+		level.move_player(Vector2(0,1))
