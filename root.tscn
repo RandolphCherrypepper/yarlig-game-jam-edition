@@ -81,7 +81,17 @@ autowrap_trim_flags = 0
 
 [node name="Animated ViewPort" type="Node2D" parent="."]
 
-[node name="ViewPort" type="RichTextLabel" parent="Animated ViewPort"]
+[node name="ViewPort1" type="RichTextLabel" parent="Animated ViewPort"]
+offset_right = 582.0
+offset_bottom = 353.0
+theme = ExtResource("1_pq8q7")
+bbcode_enabled = true
+scroll_active = false
+autowrap_mode = 0
+autowrap_trim_flags = 0
+
+[node name="ViewPort2" type="RichTextLabel" parent="Animated ViewPort"]
+visible = false
 offset_right = 582.0
 offset_bottom = 353.0
 theme = ExtResource("1_pq8q7")

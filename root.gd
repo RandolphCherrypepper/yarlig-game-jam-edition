@@ -83,7 +83,6 @@ class CenteredArray2D extends Array2D:
 			for c in range(dims.position.y, dims.position.y + dims.size.y):
 				values += str(getv(r,c)) + " "
 			values += "\n"
-		print(values)
 
 class Level:
 	var rng
@@ -96,7 +95,7 @@ class Level:
 	func _init(_rng, _level):
 		rng = _rng
 		# level alone makes the first level a bit too bleak.
-		level_number = _level #+ 1 # TODO commented out for DEBUG
+		level_number = _level + 1
 		board = CenteredArray2D.new(3*level_number, 3*level_number)
 		# for now, fill in the board with random values.
 		var dims: Rect2 = board.rect()
@@ -117,6 +116,7 @@ class Renderer:
 	var text_shape: Vector2
 	var text_center: Vector2
 	var charmap: Dictionary
+	var animation_frame: int
 	
 	func _init(_be_container, _vp_container, _ts, _tc):
 		be_cr = _be_container.get_node_and_resource("ColorRect")[0]
@@ -126,16 +126,30 @@ class Renderer:
 		vp_container = _vp_container
 		text_shape = _ts
 		text_center = _tc
+		animation_frame = 0
 		
 		# setup dictionary of displays.
 		charmap = {
-			Level.m.STAIRS: '[color="#333333"]>[/color]',
-			Level.m.WALL: '[color="#666666"]#[/color]',
-			Level.m.FLOOR: '[color="#999999"].[/color]',
-			Level.m.DOOR: '[color="#cccc00"]#[/color]',
-			Level.m.LOOT: '[color="#00cc00"]?[/color]',
-			Level.m.MOB: '[color="#cc0000"]![/color]',
-			Level.m.LAST: ' ', # acts as empty as well
+			0: {
+				Level.m.STAIRS: '[color="#333333"]>[/color]',
+				Level.m.WALL: '[color="#666666"]#[/color]',
+				Level.m.FLOOR: '[color="#999999"].[/color]',
+				Level.m.DOOR: '[color="#cccc00"]#[/color]',
+				Level.m.LOOT: '[color="#00cc00"]?[/color]',
+				Level.m.MOB: '[color="#cc0000"]![/color]',
+				Level.m.LAST: ' ', # acts as empty as well
+				'player': '[color="#00cc00"]@[/color]'
+			},
+			1: {
+				Level.m.STAIRS: '[color="#333333"]>[/color]',
+				Level.m.WALL: '[color="#666666"]#[/color]',
+				Level.m.FLOOR: '[color="#999999"].[/color]',
+				Level.m.DOOR: '[color="#cccc00"]#[/color]',
+				Level.m.LOOT: '[color="#00cc00"]?[/color]',
+				Level.m.MOB: '[color="#cccc00"]![/color]',
+				Level.m.LAST: ' ', # acts as empty as well
+				'player': '[color="#00cc00"]@[/color]'
+			},
 		}
 	
 	func base_elements_default():
@@ -144,12 +158,21 @@ class Renderer:
 		be_commands.show()
 		be_help.hide()
 
-	func show_viewport(level: Level):
-		base_elements_default()
+	func get_active_viewport() -> RichTextLabel:
+		return vp_container.get_children()[animation_frame]
 
+	func get_inactive_viewport() -> RichTextLabel:
+		# if animation frame is 0, then 1-0=1. if frame is 1, then 1-1=0.
+		return vp_container.get_children()[1-animation_frame]
+
+	func fill_viewport(level: Level):
+		base_elements_default()
+		# determine which frame we're in.
 		var board = level.board
-		var viewport: RichTextLabel = vp_container.get_children()[0]
 		var dims: Rect2 = board.rect()
+		
+		# draw to the inactive_viewport
+		var viewport = get_inactive_viewport()
 
 		# align player's location as center. level center is always (0,0)
 		var player_loc = level.player_location
@@ -167,22 +190,44 @@ class Renderer:
 				if not dims.has_point(cursor):
 					map += " "
 				else:
-					if cursor == player_loc:
-						map += '[color="#00cc00"]@[/color]'
+					if cursor == player_loc and animation_frame == 0:
+						map += charmap[animation_frame]['player'] # '[color="#00cc00"]@[/color]'
 					else:
-						map += charmap[board.getv(cursor.x, cursor.y)]
+						map += charmap[animation_frame][board.getv(cursor.x, cursor.y)]
 			map += "\n"
 		viewport.text = map
+
+	func render_viewport():
+		var active_viewport = get_active_viewport()
+		var inactive_viewport = get_inactive_viewport()
+		# switch which is hidden and which is shown
+		active_viewport.hide()
+		inactive_viewport.show()
+		# update which animation frame is active
+		animation_frame = 1 - animation_frame
 
 var my_rng
 var tick
 var renderer
+var level
+var last_render = 0
+const animation_rate = 0.7
 func _ready():
 	renderer = Renderer.new(BaseElements, ViewPort, Vector2(25, 80), Vector2(11,40))
 	# TODO add seed from user here
 	my_rng = RNG.new(0)
 	tick = 0
 	var curr_level = 1
-	var level = Level.new(my_rng, curr_level)
+	level = Level.new(my_rng, curr_level)
 	level.set_player_location(Vector2(0,0))
-	renderer.show_viewport(level)
+	renderer.fill_viewport(level)
+	renderer.render_viewport()
+
+func _process(delta):
+	last_render += delta
+	if last_render < animation_rate:
+		# not time to update animation yet.
+		return
+	renderer.fill_viewport(level)
+	renderer.render_viewport()
+	last_render = 0
