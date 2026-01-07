@@ -248,6 +248,14 @@ func _process(delta):
 	level.draw(true)
 	last_render = 0
 
+func quit():
+	get_tree().quit()
+
+func _notification(what):
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		# user is trying to close the window. quit the game.
+		quit()
+
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_up"):
 		level.move_player(Vector2(-1,0))
@@ -257,3 +265,5 @@ func _input(event: InputEvent) -> void:
 		level.move_player(Vector2(0,-1))
 	if event.is_action_pressed("ui_right"):
 		level.move_player(Vector2(0,1))
+	if event.is_action_pressed("ui_quit"):
+		quit()
