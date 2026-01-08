@@ -7,6 +7,7 @@ extends Node2D
 
 signal kill_me_now_plz
 
+#region RNG Engine
 # modified from my code originally used in https://tallpear.itch.io/lil-guys-candy-run
 class RNG:
 	var game_seed
@@ -35,7 +36,9 @@ class RNG:
 		# run modulo on this by max options somewhere else.
 		var output = output_bytes.decode_u32(0)
 		return output
+#endregion
 
+#region Array data types
 class Array2D:
 	var data
 	var n_rows
@@ -86,6 +89,7 @@ class CenteredArray2D extends Array2D:
 				values += str(getv(r,c)) + " "
 			values += "\n"
 		print(values)
+#endregion
 
 const directions = {
 	1: Vector2(1,0),
@@ -257,7 +261,6 @@ class Level:
 			n_rooms = 2
 		var tot_rooms = 0
 		var attempts = 0
-		print("n_rooms ", n_rooms)
 		while tot_rooms < n_rooms and attempts < 100:
 			var room_rngv: int = rng.get_value(rng.rtype.ROOM, starting_location, level_number, ":" + str(attempts))
 			attempts += 1
@@ -292,7 +295,7 @@ class Level:
 			set_region(potential_room.grow_individual(-1,-1,-1,-1), m.FLOOR)
 			set_region(potential_room, m.WALL, false)
 			build_doors(potential_room)
-		print("tot_rooms ", tot_rooms, " with ", attempts)
+		print("n_rooms ", n_rooms, " to tot_rooms ", tot_rooms, " with ", attempts, " attempts")
 
 	func move_player(change: Vector2):
 		player_location += change
@@ -303,6 +306,63 @@ class Level:
 		if swap:
 			renderer.swap_viewport()
 
+#region Game Object Types
+class GameObjectType:
+	var collision: bool
+	var shape: Array[String]
+	var color: Array[String]
+	func gframe(animation_frame: int):
+		return '[color="#' + color[animation_frame] + '"]' + shape[animation_frame] + '[/color]'
+
+class StairsType extends GameObjectType:
+	func _init():
+		collision = false
+		shape = ['>','>']
+		color = ['b0b080','b0b080']
+class WallType extends GameObjectType:
+	func _init():
+		collision = true
+		shape = ['#','#']
+		color = ['c0a060','c0a060']
+class FloorType extends GameObjectType:
+	func _init():
+		collision = false
+		shape = ['.','.']
+		color = ['00cc00','00cc00']
+class DoorType extends GameObjectType:
+	func _init():
+		collision = false
+		shape = ['+','+']
+		color = ['cccc00','cccc00']
+class LootType extends GameObjectType:
+	func _init():
+		collision = false
+		shape = ['?','?']
+		color = ['999999','999999']
+class MobType extends GameObjectType:
+	func _init():
+		collision = true
+		shape = ['!','!']
+		color = ['cc0000','cc0000']
+class LastType extends GameObjectType:
+	func _init():
+		collision = false
+		shape = [' ',' ']
+		color = ['000000','000000']
+
+class PlayerType extends GameObjectType:
+	func _init():
+		collision = false
+		shape = ['@']
+		color = ['cccc00','cccc00']
+	func gframe(animation_frame: int):
+		if animation_frame == 0:
+			return '[color="#cccc00"][outline_size=1][outline_color="#ffffff"]@[/outline_color][/outline_size][/color]'
+		else:
+			return false
+#endregion
+
+#region Rendering code
 class Renderer:
 	var be_cr: ColorRect
 	var be_dtfs: RichTextLabel
@@ -313,6 +373,7 @@ class Renderer:
 	var text_center: Vector2
 	var charmap: Dictionary
 	var animation_frame: int
+	var objmap: Dictionary
 	
 	func _init(_be_container, _vp_container, _ts, _tc):
 		be_cr = _be_container.get_node_and_resource("ColorRect")[0]
@@ -325,29 +386,17 @@ class Renderer:
 		animation_frame = 0
 		
 		# setup dictionary of displays.
-		charmap = {
-			0: {
-				Level.m.STAIRS: '[color="#b0b080"]>[/color]',
-				Level.m.WALL: '[color="#c0a060"]#[/color]',
-				Level.m.FLOOR: '[color="#00cc00"].[/color]',
-				Level.m.DOOR: '[color="#cccc00"]+[/color]',
-				Level.m.LOOT: '[color="#999999"]?[/color]',
-				Level.m.MOB: '[color="#cc0000"]![/color]',
-				Level.m.LAST: ' ', # acts as empty as well
-				'player': '[color="#cccc00"][outline_size=1][outline_color="#ffffff"]@[/outline_color][/outline_size][/color]'
-			},
-			1: {
-				Level.m.STAIRS: '[color="#b0b080"]>[/color]',
-				Level.m.WALL: '[color="#c0a060"]#[/color]',
-				Level.m.FLOOR: '[color="#00cc00"].[/color]',
-				Level.m.DOOR: '[color="#cccc00"]+[/color]',
-				Level.m.LOOT: '[color="#999999"]?[/color]',
-				Level.m.MOB: '[color="#cccc00"]![/color]',
-				Level.m.LAST: ' ', # acts as empty as well
-				'player': '[color="#cccc00"][outline_size=1][outline_color="#ffffff"]@[/outline_color][/outline_size][/color]'
-			},
+		objmap = {
+			Level.m.STAIRS: StairsType.new(),
+			Level.m.WALL: WallType.new(),
+			Level.m.FLOOR: FloorType.new(),
+			Level.m.DOOR: DoorType.new(),
+			Level.m.LOOT: LootType.new(),
+			Level.m.MOB: MobType.new(),
+			Level.m.LAST: LastType.new(),
+			'player': PlayerType.new()
 		}
-	
+
 	func base_elements_default():
 		be_cr.show()
 		be_dtfs.hide()
@@ -394,9 +443,13 @@ class Renderer:
 					if cursor == player_loc and (animation_frame == 0 or not inactive):
 						# only draw the character every even frame; unless the draw was force updated.
 						# this allows whatever is under the character to be shown on the odd frames.
-						map += charmap[animation_frame]['player']
+						var representation = objmap['player'].gframe(animation_frame)
+						if representation:
+							map += representation
 					else:
-						map += charmap[animation_frame][board.getv(cursor.x, cursor.y)]
+						var representation = objmap[board.getv(cursor.x, cursor.y)].gframe(animation_frame)
+						if representation:
+							map += representation
 			map += "\n"
 		viewport.text = map
 
@@ -408,6 +461,7 @@ class Renderer:
 		inactive_viewport.show()
 		# update which animation frame is active
 		animation_frame = 1 - animation_frame
+#endregion
 
 var my_rng
 var tick
