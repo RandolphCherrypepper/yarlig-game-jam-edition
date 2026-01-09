@@ -116,16 +116,10 @@ class Level:
 		# level alone makes the first level a bit too bleak.
 		level_number = _level + 1
 		board = CenteredArray2D.new(3*level_number, 3*level_number, m.WALL)
-		var bounds: Rect2 = board.rect()
-		if false: # TODO remove this DEBUG random map filler
-			# for now, fill in the board with random values.
-			for r in range(bounds.position.x, bounds.position.x + bounds.size.x):
-				for c in range(bounds.position.y, bounds.position.y + bounds.size.y):
-					board.setv(r,c,randi_range(m.STAIRS+1, m.LAST-1))
-			board.debug()
+		#var bounds: Rect2 = board.rect()
 		# Perform a random walk from the starting location.
-		recursive_build_path_dfs(0, start_location, true)
-		recursive_build_rooms(start_location)
+		var n_path_tiles = recursive_build_path_dfs(0, start_location, true)
+		recursive_build_rooms(start_location, n_path_tiles)
 
 	func set_region(region: Rect2, m_type: m, interior=true):
 		var x_start = region.position.x
@@ -155,6 +149,31 @@ class Level:
 				for x in [x_start, x_stop]:
 					board.setv(x, y, m_type)
 
+	func count_non_walls(region: Rect2):
+		var m_type = m.WALL
+		var count = 0
+		var x_start = region.position.x
+		var x_stop = region.position.x+region.size.x
+		if (x_stop-x_start) < 0:
+			# the two values are not in increasing order. fix that.
+			var x_tmp = x_start
+			x_start = x_stop
+			x_stop = x_tmp
+		x_stop -= 1
+		var y_start = region.position.y
+		var y_stop = region.position.y+region.size.y
+		if (y_stop-y_start) < 0:
+			var y_tmp = y_start
+			y_start = y_stop
+			y_stop = y_tmp
+		y_stop -= 1
+		for x in range(x_start, x_stop+1):
+			for y in range(y_start, y_stop+1):
+				var this_type = board.getv(x, y)
+				if this_type != m_type:
+					count += 1
+		return count
+
 	func build_doors(region: Rect2):
 		var bounds: Rect2 = board.rect()
 		var x_start = region.position.x
@@ -172,10 +191,12 @@ class Level:
 			y_start = y_stop
 			y_stop = y_tmp
 		y_stop -= 1
-		for test_set in [
-			[Vector2(-1,0), Vector2(1,0)],
-			[Vector2(0,-1), Vector2(0,1)]
-		]:
+		var test_sets = {
+			"horizontal": [Vector2(-1,0), Vector2(1,0)],
+			"vertical": [Vector2(0,-1), Vector2(0,1)],
+		}
+		for test_set_name in test_sets.keys():
+			var test_set = test_sets[test_set_name]
 			# TODO if path left/right, check for doors up/down and do not make another door if found
 			for x in range(x_start, x_stop+1):
 				for y in [y_start, y_stop]:
@@ -186,8 +207,23 @@ class Level:
 							if board.getv(check_point.x, check_point.y) in [m.FLOOR, m.STAIRS]:
 								# a diagonal is not a wall, don't add a path here
 								paths += 1
-						if paths == 2:
-							board.setv(x, y, m.DOOR)
+					if paths < 2:
+						continue
+					# check for how many doors are cross wise
+					paths = 0
+					var cross_test_set = "horizontal"
+					if test_set_name == "horizontal":
+						cross_test_set = "vertical"
+					for check_direction in test_sets[cross_test_set]:
+						var check_point = Vector2(x,y) + check_direction
+						if bounds.has_point(check_point):
+							if board.getv(check_point.x, check_point.y) == m.DOOR:
+								# a diagonal is not a wall, don't add a path here
+								paths += 1
+					if paths > 0:
+						# there's an adjacent door, don't put one here.
+						continue
+					board.setv(x, y, m.DOOR)
 			for y in range(y_start, y_stop+1):
 				for x in [x_start, x_stop]:
 					var paths = 0
@@ -197,15 +233,30 @@ class Level:
 							if board.getv(check_point.x, check_point.y) in [m.FLOOR, m.STAIRS]:
 								# a diagonal is not a wall, don't add a path here
 								paths += 1
-						if paths == 2:
-							board.setv(x, y, m.DOOR)
-
-	func recursive_build_path_dfs(depth, location: Vector2, starting=false) -> bool:
+					if paths < 2:
+						continue
+					# check for how many doors are cross wise
+					paths = 0
+					var cross_test_set = "horizontal"
+					if test_set_name == "horizontal":
+						cross_test_set = "vertical"
+					for check_direction in test_sets[cross_test_set]:
+						var check_point = Vector2(x,y) + check_direction
+						if bounds.has_point(check_point):
+							if board.getv(check_point.x, check_point.y) == m.DOOR:
+								# a diagonal is not a wall, don't add a path here
+								paths += 1
+					if paths > 0:
+						# there's an adjacent door, don't put one here.
+						continue
+					board.setv(x, y, m.DOOR)
+	func recursive_build_path_dfs(depth, location: Vector2, starting=false) -> int:
 		# shrink the board so that paths never lead off the edge
 		var bounds: Rect2 = board.rect().grow_individual(-1, -1, -1, -1)
+		var total_path_tiles = 0
 		# prevent too much nesting
 		if depth == 32:
-			return false
+			return total_path_tiles
 		# make sure this will not create a 2x2 region by testing each set of 3 points
 		for test_set in [
 			[Vector2(-1,0), Vector2(-1,-1), Vector2(0,-1)],
@@ -222,12 +273,13 @@ class Level:
 						test_points += 1
 			if test_points == 3:
 				# this point does not pass the diagonals check. too many diagonals.
-				return false
+				return total_path_tiles
 		# this point passes checks, mark it.
 		if starting:
 			board.setv(location.x, location.y, m.STAIRS)
 		else:
 			board.setv(location.x, location.y, m.FLOOR)
+		total_path_tiles += 1
 		# get a random value determinstically
 		var rngv: int = rng.get_value(rng.rtype.PATH, location, level_number)
 		# choose one or more directions from up to 4 choices
@@ -246,10 +298,10 @@ class Level:
 				if bounds.has_point(new_location):
 					# avoid touching a location that already has a path. 
 					if board.getv(new_location.x, new_location.y) == m.WALL:
-						recursive_build_path_dfs(depth+1, new_location)
-		return true
+						total_path_tiles += recursive_build_path_dfs(depth+1, new_location)
+		return total_path_tiles
 
-	func recursive_build_rooms(starting_location: Vector2):
+	func recursive_build_rooms(starting_location: Vector2, n_path_tiles: int):
 		# shrink the board so that paths never lead off the edge
 		var bounds: Rect2 = board.rect().grow_individual(-1, -1, -1, -1)
 		var shape = board.shape()
@@ -257,6 +309,11 @@ class Level:
 		var rngv: int = rng.get_value(rng.rtype.ROOM, starting_location, level_number)
 		# decide how many rooms to attempt in this level.
 		var n_rooms = rngv % (2*level_number)
+		# TODO modify max n_rooms based on how many paths exist.
+		if (n_rooms*3) > n_path_tiles:
+			print("reducing n rooms")
+			@warning_ignore("integer_division")
+			n_rooms = int(n_path_tiles/3)
 		if n_rooms < 2:
 			n_rooms = 2
 		var tot_rooms = 0
@@ -289,10 +346,23 @@ class Level:
 			if potential_room.has_point(starting_location):
 				# don't cover the starting location with a room. always hallway.
 				continue
-			# TODO test that there is a path on the boundary of the room.
+			# TODO path IS in one square outsize of potential room; wall does not cross path.
+			# TODO attempt doors. if less than one door, abandon room.
+			# TODO copy map as transaction. if good, commit. if bad, rollback.
+			var path_tiles_in_room = count_non_walls(potential_room)
+			var max_tiles = min(potential_room.size.x, potential_room.size.y)
+			if path_tiles_in_room > max_tiles:
+				# this room covers too much path
+				continue
+			if path_tiles_in_room < 2:
+				# not enough paths
+				continue
 			# valid room!
+			print("this room has ", path_tiles_in_room)
 			tot_rooms += 1
+			#set_region(potential_room.grow_individual(-1,-1,-1,-1), m.MOB)
 			set_region(potential_room.grow_individual(-1,-1,-1,-1), m.FLOOR)
+			#set_region(potential_room, m.LOOT, false)
 			set_region(potential_room, m.WALL, false)
 			build_doors(potential_room)
 		print("n_rooms ", n_rooms, " to tot_rooms ", tot_rooms, " with ", attempts, " attempts")
@@ -312,49 +382,56 @@ class GameObjectType:
 	var shape: Array[String]
 	var color: Array[String]
 	func gframe(animation_frame: int):
-		return '[color="#' + color[animation_frame] + '"]' + shape[animation_frame] + '[/color]'
+		var max_frame = min(len(shape),len(color))
+		var use_frame = animation_frame % max_frame
+		var this_color = color[use_frame]
+		var this_shape = shape[use_frame]
+		if this_color != '' and this_shape != '':
+			return '[color="#' + this_color + '"]' + this_shape + '[/color]'
+		else:
+			return false
 
 class StairsType extends GameObjectType:
 	func _init():
 		collision = false
-		shape = ['>','>']
-		color = ['b0b080','b0b080']
+		shape = ['>']
+		color = ['b0b080']
 class WallType extends GameObjectType:
 	func _init():
 		collision = true
-		shape = ['#','#']
-		color = ['c0a060','c0a060']
+		shape = ['#']
+		color = ['c0a060']
 class FloorType extends GameObjectType:
 	func _init():
 		collision = false
-		shape = ['.','.']
-		color = ['00cc00','00cc00']
+		shape = ['.']
+		color = ['00cc00']
 class DoorType extends GameObjectType:
 	func _init():
 		collision = false
-		shape = ['+','+']
-		color = ['cccc00','cccc00']
+		shape = ['+']
+		color = ['cccc00']
 class LootType extends GameObjectType:
 	func _init():
 		collision = false
-		shape = ['?','?']
-		color = ['999999','999999']
+		shape = ['?']
+		color = ['999999']
 class MobType extends GameObjectType:
 	func _init():
 		collision = true
-		shape = ['!','!']
-		color = ['cc0000','cc0000']
+		shape = ['!']
+		color = ['cc0000']
 class LastType extends GameObjectType:
 	func _init():
 		collision = false
-		shape = [' ',' ']
-		color = ['000000','000000']
+		shape = [' ']
+		color = ['000000']
 
 class PlayerType extends GameObjectType:
 	func _init():
 		collision = false
-		shape = ['@']
-		color = ['cccc00','cccc00']
+		shape = ['@','']
+		color = ['cccc00','']
 	func gframe(animation_frame: int):
 		if animation_frame == 0:
 			return '[color="#cccc00"][outline_size=1][outline_color="#ffffff"]@[/outline_color][/outline_size][/color]'
@@ -374,7 +451,7 @@ class Renderer:
 	var charmap: Dictionary
 	var animation_frame: int
 	var objmap: Dictionary
-	
+
 	func _init(_be_container, _vp_container, _ts, _tc):
 		be_cr = _be_container.get_node_and_resource("ColorRect")[0]
 		be_dtfs = _be_container.get_node_and_resource("DebugTestFontSize")[0]
@@ -384,7 +461,7 @@ class Renderer:
 		text_shape = _ts
 		text_center = _tc
 		animation_frame = 0
-		
+
 		# setup dictionary of displays.
 		objmap = {
 			Level.m.STAIRS: StairsType.new(),
@@ -415,7 +492,7 @@ class Renderer:
 		# determine which frame we're in.
 		var board = level.board
 		var dims: Rect2 = board.rect()
-		
+
 		# draw to the inactive_viewport by default
 		var viewport
 		if inactive:
@@ -439,17 +516,19 @@ class Renderer:
 				if not dims.has_point(cursor):
 					map += " "
 				else:
-					#if (cursor + delta) == text_center:
+					var next_char = ''
+					var representation
 					if cursor == player_loc and (animation_frame == 0 or not inactive):
 						# only draw the character every even frame; unless the draw was force updated.
 						# this allows whatever is under the character to be shown on the odd frames.
-						var representation = objmap['player'].gframe(animation_frame)
+						representation = objmap['player'].gframe(animation_frame)
 						if representation:
-							map += representation
-					else:
-						var representation = objmap[board.getv(cursor.x, cursor.y)].gframe(animation_frame)
-						if representation:
-							map += representation
+							next_char = representation
+					representation = objmap[board.getv(cursor.x, cursor.y)].gframe(animation_frame)
+					if representation and not next_char:
+						# only use this second object if there isn't already a character queued to be added.
+						next_char = representation
+					map += next_char
 			map += "\n"
 		viewport.text = map
 
@@ -473,9 +552,9 @@ func _ready():
 	kill_me_now_plz.connect(quit)
 	renderer = Renderer.new(BaseElements, ViewPort, Vector2(25, 80), Vector2(11,40))
 	# TODO add seed from user here
-	my_rng = RNG.new(4)
+	my_rng = RNG.new(0)
 	tick = 0
-	var curr_level = 5
+	var curr_level = 1
 	var starting_location = Vector2(0,0)
 	level = Level.new(kill_me_now_plz, my_rng, curr_level, renderer, starting_location)
 	level.draw(false)
