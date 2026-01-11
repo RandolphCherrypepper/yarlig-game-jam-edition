@@ -105,6 +105,7 @@ class Level:
 	var player_location: Vector2
 	var board: CenteredArray2D
 	var kill_me_now_plz
+	var recursive_args = {}
 	# always leave "STAIRS" at the start.
 	# always leave "LAST" at the end to get the valid length of the enum
 	enum m {STAIRS, WALL, FLOOR, DOOR, LOOT, MOB, LAST}
@@ -121,7 +122,9 @@ class Level:
 		var n_path_tiles = recursive_build_path_dfs(0, start_location, true)
 		recursive_build_rooms(start_location, n_path_tiles)
 
-	func set_region(region: Rect2, m_type: m, interior=true):
+	func loop_region(f: Callable, region: Rect2, interior=true):
+		# This function takes a function that is run over each (x,y) in the region.
+		# interior=true means include full interior; otherwise only include perimeter.
 		var x_start = region.position.x
 		var x_stop = region.position.x+region.size.x
 		if (x_stop-x_start) < 0:
@@ -133,6 +136,7 @@ class Level:
 		var y_start = region.position.y
 		var y_stop = region.position.y+region.size.y
 		if (y_stop-y_start) < 0:
+			# the two values are not in increasing order. fix that.
 			var y_tmp = y_start
 			y_start = y_stop
 			y_stop = y_tmp
@@ -140,116 +144,70 @@ class Level:
 		if interior:
 			for x in range(x_start, x_stop+1):
 				for y in range(y_start, y_stop+1):
-					board.setv(x, y, m_type)
+					f.call(x,y)
 		if not interior:
 			for x in range(x_start, x_stop+1):
 				for y in [y_start, y_stop]:
-					board.setv(x, y, m_type)
+					f.call(x,y)
 			for y in range(y_start, y_stop+1):
 				for x in [x_start, x_stop]:
-					board.setv(x, y, m_type)
+					f.call(x,y)
+
+	func set_region(region: Rect2, m_type: m, interior=true):
+		var set_region_callback = func(x,y):
+			board.setv(x,y,m_type)
+		loop_region(Callable(set_region_callback), region, interior)
 
 	func count_non_walls(region: Rect2):
-		var m_type = m.WALL
-		var count = 0
-		var x_start = region.position.x
-		var x_stop = region.position.x+region.size.x
-		if (x_stop-x_start) < 0:
-			# the two values are not in increasing order. fix that.
-			var x_tmp = x_start
-			x_start = x_stop
-			x_stop = x_tmp
-		x_stop -= 1
-		var y_start = region.position.y
-		var y_stop = region.position.y+region.size.y
-		if (y_stop-y_start) < 0:
-			var y_tmp = y_start
-			y_start = y_stop
-			y_stop = y_tmp
-		y_stop -= 1
-		for x in range(x_start, x_stop+1):
-			for y in range(y_start, y_stop+1):
-				var this_type = board.getv(x, y)
-				if this_type != m_type:
-					count += 1
+		# need to keep an accumulator outside the function. keep it in the object.
+		self.recursive_args['count'] = 0
+		var set_region_callback = func(x,y):
+			var this_type = board.getv(x, y)
+			if this_type != m.WALL:
+				self.recursive_args['count'] += 1
+		loop_region(Callable(set_region_callback), region, true)
+
+		# extract and remove the object's accumulator
+		var count = self.recursive_args['count']
+		self.recursive_args.erase('count')
 		return count
 
 	func build_doors(region: Rect2):
-		var bounds: Rect2 = board.rect()
-		var x_start = region.position.x
-		var x_stop = region.position.x+region.size.x
-		if (x_stop-x_start) < 0:
-			# the two values are not in increasing order. fix that.
-			var x_tmp = x_start
-			x_start = x_stop
-			x_stop = x_tmp
-		x_stop -= 1
-		var y_start = region.position.y
-		var y_stop = region.position.y+region.size.y
-		if (y_stop-y_start) < 0:
-			var y_tmp = y_start
-			y_start = y_stop
-			y_stop = y_tmp
-		y_stop -= 1
 		var test_sets = {
 			"horizontal": [Vector2(-1,0), Vector2(1,0)],
 			"vertical": [Vector2(0,-1), Vector2(0,1)],
 		}
+
 		for test_set_name in test_sets.keys():
 			var test_set = test_sets[test_set_name]
-			# TODO if path left/right, check for doors up/down and do not make another door if found
-			for x in range(x_start, x_stop+1):
-				for y in [y_start, y_stop]:
-					var paths = 0
-					for check_direction in test_set:
-						var check_point = Vector2(x,y) + check_direction
-						if bounds.has_point(check_point):
-							if board.getv(check_point.x, check_point.y) in [m.FLOOR, m.STAIRS]:
-								# a diagonal is not a wall, don't add a path here
-								paths += 1
-					if paths < 2:
-						continue
-					# check for how many doors are cross wise
-					paths = 0
-					var cross_test_set = "horizontal"
-					if test_set_name == "horizontal":
-						cross_test_set = "vertical"
-					for check_direction in test_sets[cross_test_set]:
-						var check_point = Vector2(x,y) + check_direction
-						if bounds.has_point(check_point):
-							if board.getv(check_point.x, check_point.y) == m.DOOR:
-								# a diagonal is not a wall, don't add a path here
-								paths += 1
-					if paths > 0:
-						# there's an adjacent door, don't put one here.
-						continue
-					board.setv(x, y, m.DOOR)
-			for y in range(y_start, y_stop+1):
-				for x in [x_start, x_stop]:
-					var paths = 0
-					for check_direction in test_set:
-						var check_point = Vector2(x,y) + check_direction
-						if bounds.has_point(check_point):
-							if board.getv(check_point.x, check_point.y) in [m.FLOOR, m.STAIRS]:
-								# a diagonal is not a wall, don't add a path here
-								paths += 1
-					if paths < 2:
-						continue
-					# check for how many doors are cross wise
-					paths = 0
-					var cross_test_set = "horizontal"
-					if test_set_name == "horizontal":
-						cross_test_set = "vertical"
-					for check_direction in test_sets[cross_test_set]:
-						var check_point = Vector2(x,y) + check_direction
-						if bounds.has_point(check_point):
-							if board.getv(check_point.x, check_point.y) == m.DOOR:
-								# a diagonal is not a wall, don't add a path here
-								paths += 1
-					if paths > 0:
-						# there's an adjacent door, don't put one here.
-						continue
-					board.setv(x, y, m.DOOR)
+			var set_region_callback = func(x,y):
+				var bounds: Rect2 = board.rect()
+				var paths = 0
+				for check_direction in test_set:
+					var check_point = Vector2(x,y) + check_direction
+					if bounds.has_point(check_point):
+						if board.getv(check_point.x, check_point.y) in [m.FLOOR, m.STAIRS]:
+							# a diagonal is not a wall, don't add a path here
+							paths += 1
+				if paths < 2:
+					return
+				# check for how many doors are cross wise
+				paths = 0
+				var cross_test_set = "horizontal"
+				if test_set_name == "horizontal":
+					cross_test_set = "vertical"
+				for check_direction in test_sets[cross_test_set]:
+					var check_point = Vector2(x,y) + check_direction
+					if bounds.has_point(check_point):
+						if board.getv(check_point.x, check_point.y) == m.DOOR:
+							# a diagonal is not a wall, don't add a path here
+							paths += 1
+				if paths > 0:
+					# there's an adjacent door, don't put one here.
+					return
+				board.setv(x, y, m.DOOR)
+			loop_region(Callable(set_region_callback), region, false)
+
 	func recursive_build_path_dfs(depth, location: Vector2, starting=false) -> int:
 		# shrink the board so that paths never lead off the edge
 		var bounds: Rect2 = board.rect().grow_individual(-1, -1, -1, -1)
@@ -552,9 +510,9 @@ func _ready():
 	kill_me_now_plz.connect(quit)
 	renderer = Renderer.new(BaseElements, ViewPort, Vector2(25, 80), Vector2(11,40))
 	# TODO add seed from user here
-	my_rng = RNG.new(0)
+	my_rng = RNG.new(4)
 	tick = 0
-	var curr_level = 1
+	var curr_level = 5
 	var starting_location = Vector2(0,0)
 	level = Level.new(kill_me_now_plz, my_rng, curr_level, renderer, starting_location)
 	level.draw(false)
