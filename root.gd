@@ -267,7 +267,7 @@ class Level:
 		var rngv: int = rng.get_value(rng.rtype.ROOM, starting_location, level_number)
 		# decide how many rooms to attempt in this level.
 		var n_rooms = rngv % (2*level_number)
-		# TODO modify max n_rooms based on how many paths exist.
+		# modify max n_rooms based on how many paths exist.
 		if (n_rooms*3) > n_path_tiles:
 			print("reducing n rooms")
 			@warning_ignore("integer_division")
@@ -304,9 +304,7 @@ class Level:
 			if potential_room.has_point(starting_location):
 				# don't cover the starting location with a room. always hallway.
 				continue
-			# TODO path IS in one square outsize of potential room; wall does not cross path.
-			# TODO attempt doors. if less than one door, abandon room.
-			# TODO copy map as transaction. if good, commit. if bad, rollback.
+			# UNNECESSARY IDEA copy map as transaction. if good, commit. if bad, rollback.
 			var path_tiles_in_room = count_non_walls(potential_room)
 			var max_tiles = min(potential_room.size.x, potential_room.size.y)
 			if path_tiles_in_room > max_tiles:
@@ -315,8 +313,8 @@ class Level:
 			if path_tiles_in_room < 2:
 				# not enough paths
 				continue
+			# TODO corner can block path ending completeness
 			# valid room!
-			print("this room has ", path_tiles_in_room)
 			tot_rooms += 1
 			#set_region(potential_room.grow_individual(-1,-1,-1,-1), m.MOB)
 			set_region(potential_room.grow_individual(-1,-1,-1,-1), m.FLOOR)
@@ -326,7 +324,14 @@ class Level:
 		print("n_rooms ", n_rooms, " to tot_rooms ", tot_rooms, " with ", attempts, " attempts")
 
 	func move_player(change: Vector2):
-		player_location += change
+		var potential_location = player_location + change
+		var potential_type = board.getv(potential_location.x, potential_location.y)
+		# can player move?
+		if potential_type not in [m.FLOOR, m.DOOR, m.STAIRS]:
+			# nope, player cannot move into this.
+			return
+		# update player location
+		player_location = potential_location
 		draw(false)
 
 	func draw(swap=false):
@@ -505,17 +510,23 @@ var tick
 var renderer
 var level
 var last_render = 0
+var new_counter = 10
 const animation_rate = 0.7
-func _ready():
+func new_game():
+	last_render = 0
+	new_counter += 1
 	kill_me_now_plz.connect(quit)
 	renderer = Renderer.new(BaseElements, ViewPort, Vector2(25, 80), Vector2(11,40))
 	# TODO add seed from user here
-	my_rng = RNG.new(4)
+	my_rng = RNG.new(new_counter)
 	tick = 0
 	var curr_level = 5
 	var starting_location = Vector2(0,0)
 	level = Level.new(kill_me_now_plz, my_rng, curr_level, renderer, starting_location)
 	level.draw(false)
+
+func _ready():
+	new_game()
 
 func _process(delta):
 	last_render += delta
@@ -545,3 +556,5 @@ func _input(event: InputEvent) -> void:
 		level.move_player(Vector2(0,1))
 	if event.is_action_pressed("ui_quit"):
 		kill_me_now_plz.emit()
+	if event.is_action_pressed("ui_new"):
+		new_game()
