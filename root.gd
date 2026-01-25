@@ -580,6 +580,7 @@ class Renderer:
 		be_dtfs.hide()
 		be_commands.show()
 		be_help.hide()
+		vp_container.show()
 
 	func get_active_viewport() -> RichTextLabel:
 		return vp_container.get_children()[animation_frame]
@@ -609,8 +610,8 @@ class Renderer:
 		# setup map/board/level text
 		var map = "\n\n"
 
-		# scan through the screen size. leave an empty row on bottom (why -7?)
-		for r in range(0, text_shape.x-7):
+		# scan through the screen size. 2 empty rows on top, one empty row on bottom, so -3
+		for r in range(0, text_shape.x-3):
 			for c in range(0, text_shape.y):
 				# convert screen coordinate to play coordinate.
 				var cursor = Vector2(r,c) - delta
@@ -677,9 +678,9 @@ func adjust_window_size_to_text():
 	# Find desired max height from the vertical scrollbar
 	var viewports = ViewPort.get_children()
 	var scrollybars: VScrollBar = viewports[0].get_v_scroll_bar()
-	var desired_height = scrollybars.max_value
+	var desired_height = scrollybars.max_value+5
 	# determine width based on the scrollbar
-	var desired_width = desired_height * 1.66
+	var desired_width = desired_height * 1.57
 	# now we know the size we want our window to be.
 	var desired_size = Vector2i(int(desired_width), int(desired_height))
 
