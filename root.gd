@@ -13,7 +13,7 @@ signal use_level(Level)
 class RNG:
 	var game_seed
 	# TODO merge with the enum m?
-	enum rtype {PATH, ROOM, ITEM, NPC}
+	enum rtype {PATH, ROOM, ITEM, MOB}
 	func _init(_seed):
 		game_seed = _seed
 	func get_value(what: rtype, where: Vector2, level: int, additional: String = "") -> int:
@@ -318,7 +318,6 @@ class Level:
 		return total_path_tiles
 
 	func room_is_okay(bounds: Rect2, starting_location: Vector2, potential_room: Rect2, consider_walls: bool) -> bool:
-		print("room ", potential_room)
 		var room_inside = potential_room.grow_individual(-1,-1,-1,-1)
 		var room_outer = potential_room.grow_individual(1,1,1,1)
 		if not bounds.encloses(room_outer):
@@ -418,11 +417,9 @@ class Level:
 				potential_room = Rect2(position_x, position_y, width, height)
 			if good_room == null:
 				# room was never okay. try a new one.
-				print("bad room ", potential_room)
 				continue
 			potential_room = good_room
 			tot_rooms += 1
-			print("MADE A ROOM LOL ", potential_room)
 			last_room_attempt = attempts
 			#set_region(room_inside, m.MOB, true, true)
 			set_region(potential_room.grow_individual(-1,-1,-1,-1), m.FLOOR, true, true)
@@ -672,6 +669,44 @@ func set_level(_level):
 	level = _level
 	level.draw(false)
 
+func adjust_window_size_to_text():
+	# the ViewPorts are sized based on the font size.
+	# there will always be 80x25 characters in the ViewPorts.
+	# the ViewPort size should define the entire window size.
+	# ViewPort size is inaccessbile??????????????
+	# Find desired max height from the vertical scrollbar
+	var viewports = ViewPort.get_children()
+	var scrollybars: VScrollBar = viewports[0].get_v_scroll_bar()
+	var desired_height = scrollybars.max_value
+	# determine width based on the scrollbar
+	var desired_width = desired_height * 1.66
+	# now we know the size we want our window to be.
+	var desired_size = Vector2i(int(desired_width), int(desired_height))
+
+	# Update the window size itself
+	DisplayServer.window_set_size(desired_size)
+	get_window().size = desired_size
+
+	# Update all the container sizes
+	for vp in viewports:
+		vp.size = desired_size
+	for thing in $"Base Elements".get_children():
+		thing.size = desired_size
+
+var did_size_adjustment = false
+func initial_size_adjust():
+	if did_size_adjustment:
+		return
+	var viewport: RichTextLabel = ViewPort.get_children()[0]
+	var scrollybars: VScrollBar = viewport.get_v_scroll_bar()
+	if scrollybars.max_value == 100 and scrollybars.page == 0:
+		# NOT INITIALIZED YET
+		return
+	# perform initial adjustment for real.
+	adjust_window_size_to_text()
+	# mark it done
+	did_size_adjustment = true
+
 func _ready():
 	kill_me_now_plz.connect(quit)
 	use_level.connect(set_level)
@@ -684,6 +719,8 @@ func _process(delta):
 		return
 	level.draw(true)
 	last_render = 0
+	# TODO find a way to run this after ready but just once and not process
+	initial_size_adjust()
 
 func quit():
 	get_tree().quit()
@@ -692,6 +729,16 @@ func _notification(what):
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
 		# user is trying to close the window. quit the game.
 		kill_me_now_plz.emit()
+
+func zoom(mooz=false):
+	if not did_size_adjustment:
+		return
+	var shared_theme = ViewPort.get_children()[0].theme
+	if mooz:
+		shared_theme.default_font_size -= 1
+	else:
+		shared_theme.default_font_size += 1
+	did_size_adjustment = false
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_up"):
@@ -706,3 +753,7 @@ func _input(event: InputEvent) -> void:
 		kill_me_now_plz.emit()
 	if event.is_action_pressed("ui_new"):
 		new_game()
+	if event.is_action_pressed("ui_ENHANCE"):
+		zoom()
+	if event.is_action_pressed("ui_DEHANCE"):
+		zoom(true)
