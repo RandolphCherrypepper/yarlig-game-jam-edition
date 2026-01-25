@@ -58,7 +58,7 @@ offset_right = 582.0
 offset_bottom = 353.0
 theme = ExtResource("1_pq8q7")
 bbcode_enabled = true
-text = "Quit [ Q ] | New [ backspace ] | Help [ ? ] |
+text = "Quit [ Q ] | New [ backspace ] | Help [ ? ] | History [tab] |
 [hr]"
 scroll_active = false
 autowrap_mode = 0
@@ -75,6 +75,17 @@ text = "
 
 There is no save. There is no load.
 "
+scroll_active = false
+autowrap_mode = 0
+autowrap_trim_flags = 0
+
+[node name="History" type="RichTextLabel" parent="Base Elements"]
+visible = false
+z_index = -1
+offset_right = 582.0
+offset_bottom = 353.0
+theme = ExtResource("1_pq8q7")
+bbcode_enabled = true
 scroll_active = false
 autowrap_mode = 0
 autowrap_trim_flags = 0

@@ -545,22 +545,26 @@ class Renderer:
 	var be_dtfs: RichTextLabel
 	var be_commands: RichTextLabel
 	var be_help: RichTextLabel
+	var be_history: RichTextLabel
 	var vp_container: Node2D
 	var text_shape: Vector2
 	var text_center: Vector2
 	var charmap: Dictionary
 	var animation_frame: int
 	var objmap: Dictionary
+	var gs: GameState
 
-	func _init(_be_container, _vp_container, _ts, _tc):
+	func _init(_be_container, _vp_container, _ts, _tc, _gs):
 		be_cr = _be_container.get_node_and_resource("ColorRect")[0]
 		be_dtfs = _be_container.get_node_and_resource("DebugTestFontSize")[0]
 		be_commands = _be_container.get_node_and_resource("Commands")[0]
 		be_help = _be_container.get_node_and_resource("Help")[0]
+		be_history = _be_container.get_node_and_resource("History")[0]
 		vp_container = _vp_container
 		text_shape = _ts
 		text_center = _tc
 		animation_frame = 0
+		gs = _gs
 
 		# setup dictionary of displays.
 		objmap = {
@@ -575,13 +579,6 @@ class Renderer:
 			'player': PlayerType.new()
 		}
 
-	func base_elements_default():
-		be_cr.show()
-		be_dtfs.hide()
-		be_commands.show()
-		be_help.hide()
-		vp_container.show()
-
 	func get_active_viewport() -> RichTextLabel:
 		return vp_container.get_children()[animation_frame]
 
@@ -590,7 +587,40 @@ class Renderer:
 		return vp_container.get_children()[1-animation_frame]
 
 	func fill_viewport(level: Level, inactive=true):
-		base_elements_default()
+		# TODO fix this somewhere else
+		if gs.current_scene == null:
+			gs.current_scene = gs.scenes.PLAY
+		if gs.current_scene == gs.scenes.HELP:
+			fill_viewport_help()
+		if gs.current_scene == gs.scenes.HISTORY:
+			fill_viewport_history()
+		if gs.current_scene == gs.scenes.PLAY:
+			fill_viewport_game(level, inactive)
+
+	func fill_viewport_help():
+		be_cr.show()
+		be_dtfs.hide()
+		be_commands.show()
+		be_help.show()
+		be_history.hide()
+		vp_container.hide()
+
+	func fill_viewport_history():
+		be_cr.show()
+		be_dtfs.hide()
+		be_commands.show()
+		be_help.hide()
+		be_history.show()
+		vp_container.hide()
+
+	func fill_viewport_game(level: Level, inactive=true):
+		be_cr.show()
+		be_dtfs.hide()
+		be_commands.show()
+		be_help.hide()
+		be_history.hide()
+		vp_container.show()
+
 		# determine which frame we're in.
 		var board = level.board
 		var dims: Rect2 = board.rect()
@@ -633,6 +663,8 @@ class Renderer:
 					map += next_char
 			map += "\n"
 		# Status line on bottom
+		map += gs.history.get_line() + "\n"
+		# TODO REMOVE THIS DEBUG:
 		map += "Player location: " + str(player_loc)
 		viewport.text = map
 
@@ -646,29 +678,76 @@ class Renderer:
 		animation_frame = 1 - animation_frame
 #endregion
 
-var my_rng
-var tick
-var renderer
-var level
-var last_render = 0
-var new_counter = 0
-const animation_rate = 0.7
-func new_game():
-	last_render = 0
-	new_counter += 1
-	renderer = Renderer.new(BaseElements, ViewPort, Vector2(25, 80), Vector2(11,40))
-	# TODO add seed from user here
-	print("using seed ", new_counter)
-	my_rng = RNG.new(new_counter)
-	tick = 0
-	var curr_level = 1
-	var starting_location = Vector2(0,0)
-	# set some new level
-	use_level.emit(Level.new(kill_me_now_plz, my_rng, curr_level, renderer, starting_location))
+class History:
+	var logs: Array = ["END OF LOG"]
+	func add_line(text):
+		# add a new line to the log history
+		logs.append(text)
+	func get_line():
+		# get only the last line from the log history
+		if len(logs) == 0:
+			return ""
+		return logs[-1]
+	func get_lines():
+		# return the last 23 lines of history
+		if len(logs) < 23:
+			return logs
+		return logs.slice(-23)
 
-func set_level(_level):
-	level = _level
-	level.draw(false)
+class GameState:
+	var my_rng
+	var tick
+	var renderer
+	var level
+	var last_render = 0
+	var new_counter = 0
+	var ViewPort
+	var history
+	var use_level
+	var kill_me_now_plz
+	var BaseElements
+	const animation_rate = 0.7
+	enum scenes {PLAY, HELP, HISTORY}
+	var current_scene
+
+	func _init(_use_level: Signal, _kill_me_now_plz: Signal, _ViewPort, _BaseElements) -> void:
+		BaseElements = _BaseElements
+		ViewPort = _ViewPort
+		kill_me_now_plz = _kill_me_now_plz
+		use_level = _use_level
+		use_level.connect(set_level)
+		history = History.new()
+		new_game()
+		current_scene = scenes.PLAY
+
+	func new_game():
+		last_render = 0
+		new_counter += 1
+		renderer = Renderer.new(BaseElements, ViewPort, Vector2(25, 80), Vector2(11,40), self)
+		# TODO add seed from user here
+		print("using seed ", new_counter)
+		my_rng = RNG.new(new_counter)
+		tick = 0
+		var curr_level = 1
+		var starting_location = Vector2(0,0)
+		# set some new level
+		use_level.emit(Level.new(kill_me_now_plz, my_rng, curr_level, renderer, starting_location))
+
+	func set_level(_level):
+		level = _level
+		level.draw(false)
+
+	func enable_help():
+		current_scene = scenes.HELP
+
+	func disable_help():
+		current_scene = scenes.PLAY
+
+	func enable_history():
+		current_scene = scenes.HISTORY
+
+	func disable_history():
+		current_scene = scenes.PLAY
 
 func adjust_window_size_to_text():
 	# the ViewPorts are sized based on the font size.
@@ -708,18 +787,18 @@ func initial_size_adjust():
 	# mark it done
 	did_size_adjustment = true
 
+var gs
 func _ready():
 	kill_me_now_plz.connect(quit)
-	use_level.connect(set_level)
-	new_game()
+	gs = GameState.new(use_level, kill_me_now_plz, ViewPort, BaseElements)
 
 func _process(delta):
-	last_render += delta
-	if last_render < animation_rate:
+	gs.last_render += delta
+	if gs.last_render < gs.animation_rate:
 		# not time to update animation yet.
 		return
-	level.draw(true)
-	last_render = 0
+	gs.level.draw(true)
+	gs.last_render = 0
 	# TODO find a way to run this after ready but just once and not process
 	initial_size_adjust()
 
@@ -742,19 +821,37 @@ func zoom(mooz=false):
 	did_size_adjustment = false
 
 func _input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_up"):
-		level.move_player(Vector2(-1,0))
-	if event.is_action_pressed("ui_down"):
-		level.move_player(Vector2(1,0))
-	if event.is_action_pressed("ui_left"):
-		level.move_player(Vector2(0,-1))
-	if event.is_action_pressed("ui_right"):
-		level.move_player(Vector2(0,1))
-	if event.is_action_pressed("ui_quit"):
-		kill_me_now_plz.emit()
-	if event.is_action_pressed("ui_new"):
-		new_game()
+	# Global Commands
 	if event.is_action_pressed("ui_ENHANCE"):
 		zoom()
 	if event.is_action_pressed("ui_DEHANCE"):
 		zoom(true)
+	if event.is_action_pressed("ui_quit"):
+		kill_me_now_plz.emit()
+
+	# Help Commands
+	if gs.current_scene == gs.scenes.HELP:
+		if event.is_action_pressed("ui_help"):
+			gs.disable_help()
+
+	# History Commands
+	elif gs.current_scene == gs.scenes.HISTORY:
+		if event.is_action_pressed("ui_history"):
+			gs.disable_history()
+
+	# Play Commands
+	elif gs.current_scene == gs.scenes.PLAY:
+		if event.is_action_pressed("ui_up"):
+			gs.level.move_player(Vector2(-1,0))
+		if event.is_action_pressed("ui_down"):
+			gs.level.move_player(Vector2(1,0))
+		if event.is_action_pressed("ui_left"):
+			gs.level.move_player(Vector2(0,-1))
+		if event.is_action_pressed("ui_right"):
+			gs.level.move_player(Vector2(0,1))
+		if event.is_action_pressed("ui_new"):
+			gs.new_game()
+		if event.is_action_pressed("ui_help"):
+			gs.enable_help()
+		if event.is_action_pressed("ui_history"):
+			gs.enable_history()
