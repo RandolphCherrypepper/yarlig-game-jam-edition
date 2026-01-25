@@ -12,11 +12,9 @@ signal use_level(Level)
 # modified from my code originally used in https://tallpear.itch.io/lil-guys-candy-run
 class RNG:
 	var game_seed
-	# TODO merge with the enum m?
-	enum rtype {PATH, ROOM, ITEM, MOB}
 	func _init(_seed):
 		game_seed = _seed
-	func get_value(what: rtype, where: Vector2, level: int, additional: String = "") -> int:
+	func get_value(what, where: Vector2, level: int, additional: String = "") -> int:
 		# too much granularity means moving an asset a few pixels in the editor will change
 		# the results of procedural generation.
 		# drop decimals off x,y location by converting to int.
@@ -290,7 +288,7 @@ class Level:
 			board.setv(location.x, location.y, std[FloorType])
 		total_path_tiles += 1
 		# get a random value determinstically
-		var rngv: int = rng.get_value(rng.rtype.PATH, location, level_number, str(run))
+		var rngv: int = rng.get_value(std[FloorType].hash(), location, level_number, str(run))
 		# choose one or more directions from up to 4 choices
 		var direction = rngv % 16
 		while direction == 0:
@@ -375,7 +373,7 @@ class Level:
 		# shrink the board so that paths never lead off the edge
 		var bounds: Rect2 = board.rect().grow_individual(-1, -1, -1, -1)
 		# get a random value determinstically
-		var rngv: int = rng.get_value(rng.rtype.ROOM, starting_location, level_number)
+		var rngv: int = rng.get_value("room", starting_location, level_number)
 		# decide how many rooms to attempt in this level.
 		var n_rooms = rngv % (2*level_number)
 		# modify max n_rooms based on how many paths exist.
@@ -392,7 +390,7 @@ class Level:
 		var attempts = 0
 		var last_room_attempt = -1
 		while tot_rooms < n_rooms and attempts < 1500:
-			var room_rngv: int = rng.get_value(rng.rtype.ROOM, starting_location, level_number, ":" + str(attempts))
+			var room_rngv: int = rng.get_value("room", starting_location, level_number, ":" + str(attempts))
 			attempts += 1
 			var min_width = 4
 			var min_height = 4
@@ -432,28 +430,47 @@ class Level:
 			if tot_exits < n_exits:
 				# if this is the first valid room, drop an exit.
 				tot_exits += drop_exit(potential_room)
+			drop_mob(potential_room)
 		print("n_rooms ", n_rooms, " to tot_rooms ", tot_rooms, " at attempt ", last_room_attempt, " out of ", attempts, " attempts")
 
 	func drop_exit(region: Rect2):
+		return drop_symbol(region, std[StairsType])
+
+	func drop_mob(region: Rect2):
+		return drop_symbol(region, MobType.new(level_number))
+
+	func drop_symbol(region: Rect2, obj: GameObjectType):
 		# find a random tile in the room and drop an exit on it.
-		var rngv: int = rng.get_value(rng.rtype.ROOM, region.position, level_number)
-		print("position ", region.position)
-		print("region ", region.size)
-		var target = Vector2(0,0)
-		var x_loc = (rngv % 16384) % int(region.size.x-2) + 1
-		target.x = region.position.x + x_loc
-		@warning_ignore("integer_division")
-		rngv = rngv / 16384
-		var y_loc = (rngv % 16384) % int(region.size.y-2) + 1
-		target.y = region.position.y + y_loc
-		print("within room diff ", x_loc, " ", y_loc)
-		print("dropping a big ol exit all over the place ", target)
-		board.setv(target.x, target.y, std[StairsType])
-		return 1
+		# only try a set number of times times
+		var counter = 5
+		for i in range(0, counter):
+			var rngv: int = rng.get_value("room", region.position, level_number, str(i))
+			print("position ", region.position)
+			print("region ", region.size)
+			var target = Vector2(0,0)
+			var x_loc = (rngv % 16384) % int(region.size.x-2) + 1
+			target.x = region.position.x + x_loc
+			@warning_ignore("integer_division")
+			rngv = rngv / 16384
+			var y_loc = (rngv % 16384) % int(region.size.y-2) + 1
+			target.y = region.position.y + y_loc
+			# only drop a new symbol on an existing floor symbol
+			if board.getv(target.x, target.y) != std[FloorType]:
+				continue
+			print("within room diff ", x_loc, " ", y_loc)
+			print("dropping a big ol exit all over the place ", target)
+			board.setv(target.x, target.y, obj)
+			return 1
+		return 0
 
 	func move_player(change: Vector2):
 		var potential_location = player_location + change
 		var potential_type = board.getv(potential_location.x, potential_location.y)
+		# walking into a hittable?
+		if potential_type.hittable:
+			# ATTACK!
+			potential_type.health -= 1
+			gs.history.add_line("YOU WACK THE THING FOR 1 HOLY SHIT")
 		# can player move?
 		if gs.check_cheat(gs.cheat_names.NO_COLLISION) == false and potential_type.collision:
 			# nope, player cannot move into this.
@@ -469,7 +486,8 @@ class Level:
 
 #region Game Object Types
 class GameObjectType:
-	var collision: bool
+	var collision: bool = true
+	var hittable: bool = false
 	var shape: Array[String]
 	var color: Array[String]
 	func gframe(animation_frame: int):
@@ -481,6 +499,8 @@ class GameObjectType:
 			return '[color="#' + this_color + '"]' + this_shape + '[/color]'
 		else:
 			return false
+	func hash():
+		return get_instance_id()
 
 class StairsType extends GameObjectType:
 	var up_direction
@@ -490,8 +510,8 @@ class StairsType extends GameObjectType:
 		up_direction = _up_direction
 		collision = false
 		all_shape = {
-			true: ['<'] as Array[String],
-			false: ['>']  as Array[String],
+			true: ['^'] as Array[String],
+			false: ['v']  as Array[String],
 		}
 		color = ['b0b080']
 	func gframe(animation_frame: int):
@@ -499,7 +519,6 @@ class StairsType extends GameObjectType:
 		return super(animation_frame)
 class WallType extends GameObjectType:
 	func _init():
-		collision = true
 		shape = ['#']
 		color = ['c0a060']
 class FloorType extends GameObjectType:
@@ -518,15 +537,16 @@ class LootType extends GameObjectType:
 		shape = ['?']
 		color = ['999999']
 class MobType extends GameObjectType:
-	func _init():
-		collision = true
+	var level
+	var max_health
+	var health
+	func _init(_level):
+		level = _level
+		max_health = level
+		health = max_health
+		hittable = true
 		shape = ['!']
 		color = ['cc0000']
-class LastType extends GameObjectType:
-	func _init():
-		collision = false
-		shape = [' ']
-		color = ['000000']
 
 class PlayerType extends GameObjectType:
 	var max_health
@@ -534,7 +554,6 @@ class PlayerType extends GameObjectType:
 	func _init():
 		max_health = 10
 		health = max_health
-		collision = false
 		shape = ['@','']
 		color = ['cccc00','']
 	func gframe(animation_frame: int):
@@ -543,7 +562,7 @@ class PlayerType extends GameObjectType:
 		else:
 			return false
 	func get_health_str():
-		return str(health) + "/" + str(max_health)
+		return "HP:" + str(health) + "/" + str(max_health)
 #endregion
 
 #region Rendering code
@@ -606,6 +625,19 @@ class Renderer:
 		be_history.show()
 		vp_container.hide()
 
+		var text = "\n\n"
+		var history = gs.history.get_lines()
+		# 25 lines of history, skip first two, offset by 23 as needed.
+		if len(history) < 23:
+			for i in range(len(history), 23):
+				text += "\n"
+		if gs.history.n_lines() > 23:
+			text += "^ SCROLL UP\n"
+			history = history.slice(1)
+		for line in history:
+			text += line + "\n"
+		be_history.text = text
+
 	func fill_viewport_game(level: Level, inactive=true):
 		be_cr.show()
 		be_dtfs.hide()
@@ -633,8 +665,8 @@ class Renderer:
 		# setup map/board/level text
 		var map = "\n\n"
 
-		# scan through the screen size. 2 empty rows on top, one empty row on bottom, so -3
-		for r in range(0, text_shape.x-3):
+		# scan through the screen size. 2 empty rows on top, 2 empty rows on bottom, so -4
+		for r in range(0, text_shape.x-4):
 			for c in range(0, text_shape.y):
 				# convert screen coordinate to play coordinate.
 				var cursor = Vector2(r,c) - delta
@@ -655,10 +687,12 @@ class Renderer:
 						next_char = representation
 					map += next_char
 			map += "\n"
-		# Status line on bottom
+		# Status line near bottom
+		if gs.check_cheat(gs.cheat_names.PLAYER_LOCATION):
+			map += "LOC:" + str(player_loc) + " "
+		map += gs.player_obj.get_health_str() + "\n"
+		# History line on the bottom
 		map += gs.history.get_line() + "\n"
-		# TODO REMOVE THIS DEBUG:
-		map += "Player location: " + str(player_loc)
 		viewport.text = map
 
 	func swap_viewport():
@@ -672,20 +706,26 @@ class Renderer:
 #endregion
 
 class History:
-	var logs: Array = ["END OF LOG"]
+	var logs: Array = []
 	func add_line(text):
 		# add a new line to the log history
+		# make sure each line is a little different
+		if text == get_line():
+			# same text twice. add a space!
+			text = " " + text
 		logs.append(text)
 	func get_line():
 		# get only the last line from the log history
 		if len(logs) == 0:
 			return ""
 		return logs[-1]
-	func get_lines():
+	func get_lines(offset=0):
 		# return the last 23 lines of history
 		if len(logs) < 23:
 			return logs
-		return logs.slice(-23)
+		return logs.slice(-23+offset)
+	func n_lines():
+		return len(logs)
 
 class GameState:
 	var my_rng
@@ -697,7 +737,7 @@ class GameState:
 	var ViewPort
 	var history
 	var cheats = {}
-	enum cheat_names {NO_COLLISION}
+	enum cheat_names {NO_COLLISION, PLAYER_LOCATION}
 	var use_level
 	var player_obj
 	var kill_me_now_plz
@@ -791,6 +831,8 @@ var gs
 func _ready():
 	kill_me_now_plz.connect(quit)
 	gs = GameState.new(use_level, kill_me_now_plz, ViewPort, BaseElements)
+	#gs.cheats[gs.cheat_names.NO_COLLISION] = true
+	gs.cheats[gs.cheat_names.PLAYER_LOCATION] = true
 
 func _process(delta):
 	gs.last_render += delta
@@ -799,7 +841,6 @@ func _process(delta):
 		return
 	gs.level.draw(true)
 	gs.last_render = 0
-	#gs.cheats[gs.cheat_names.NO_COLLISION] = true
 	# TODO find a way to run this after ready but just once and not process
 	initial_size_adjust()
 
