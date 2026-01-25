@@ -67,13 +67,13 @@ class Array2D:
 
 class CenteredArray2D extends Array2D:
 	var center
-	func _init(_n_rows: int, _n_cols: int, _default=0):
+	func _init(_n_rows: int, _n_cols: int, _default):
 		# treat n_rows and n_cols as being offset from (0,0) so (-n_rows,-n_cols) through (+n_rows, +n_cols)
 		center = Vector2(_n_rows, _n_cols)
 		_n_rows = _n_rows*2 + 1
 		_n_cols = _n_cols*2 + 1
 		super(_n_rows, _n_cols, _default)
-	func getv(x, y):
+	func getv(x, y) -> GameObjectType:
 		# map (x,y) values onto rows and columns such that (x,y) follows normal math graphing axes.
 		# each x and y can be (-n_rows,-n_cols) through (+n_rows, +n_cols).
 		# adjust it to positive values only.
@@ -81,7 +81,7 @@ class CenteredArray2D extends Array2D:
 		# invert only the -x values.
 		#return super(y+center.y, -x+center.x) # TODO this in combo with setv changed cancel?
 		return super(x+center.x, y+center.y)
-	func setv(x, y, value):
+	func setv(x, y, value: GameObjectType):
 		super(x+center.x, y+center.y, value)
 	func rect() -> Rect2:
 		# return a shape considering it as a full rectangle
@@ -111,19 +111,24 @@ class Level:
 	var player_location: Vector2
 	var board: CenteredArray2D
 	var kill_me_now_plz
+	var gs
 	var recursive_args = {}
-	# always leave "STAIRS" at the start.
-	# always leave "LAST" at the end to get the valid length of the enum
-	# TODO merge with the enum rtype?
-	enum m {STAIRS, DOWNSTAIRS, WALL, FLOOR, DOOR, LOOT, MOB, LAST}
-	func _init(_kill_me_now_plz, _rng, _level, _renderer, start_location: Vector2):
+	# standard GameObjectType
+	var std = {
+		DoorType: DoorType.new(),
+		WallType: WallType.new(),
+		FloorType: FloorType.new(),
+		StairsType: StairsType.new(),
+	}
+	func _init(parent: GameState, _kill_me_now_plz, _rng, _level, _renderer, start_location: Vector2):
+		gs = parent
 		player_location = start_location
 		rng = _rng
 		renderer = _renderer
 		kill_me_now_plz = _kill_me_now_plz
 		# level alone makes the first level a bit too bleak.
 		level_number = _level + 2
-		board = CenteredArray2D.new(3*level_number, 3*level_number, m.WALL)
+		board = CenteredArray2D.new(3*level_number, 3*level_number, std[WallType])
 		#var bounds: Rect2 = board.rect()
 		# Perform a random walk from the starting location.
 		self.recursive_args['touched path'] = {}
@@ -184,9 +189,9 @@ class Level:
 							continue
 					f.call(x,y)
 
-	func set_region(region: Rect2, m_type: m, interior: bool, corners: bool):
+	func set_region(region: Rect2, obj: GameObjectType, interior: bool, corners: bool):
 		var set_region_callback = func(x,y):
-			board.setv(x,y,m_type)
+			board.setv(x,y,obj)
 		loop_region(set_region_callback, region, interior, corners)
 
 	func count_in_room(rule: Callable, region: Rect2, interior: bool):
@@ -205,12 +210,12 @@ class Level:
 
 	func count_non_walls(region: Rect2, interior: bool):
 		var _count_non_walls = func(this_type):
-			return this_type != m.WALL
+			return this_type != std[WallType]
 		return count_in_room(_count_non_walls, region, interior)
 
 	func count_stairs(region: Rect2, interior: bool):
 		var _count_stairs = func(this_type):
-			return this_type == m.STAIRS
+			return this_type == std[StairsType]
 		return count_in_room(_count_stairs, region, interior)
 
 	func build_doors(region: Rect2):
@@ -227,7 +232,7 @@ class Level:
 				for check_direction in test_set:
 					var check_point = Vector2(x,y) + check_direction
 					if bounds.has_point(check_point):
-						if board.getv(check_point.x, check_point.y) in [m.FLOOR, m.DOWNSTAIRS, m.STAIRS]:
+						if board.getv(check_point.x, check_point.y) in [std[FloorType], std[StairsType]]:
 							# a diagonal is not a wall, don't add a path here
 							paths += 1
 				if paths < 2:
@@ -240,13 +245,13 @@ class Level:
 				for check_direction in test_sets[cross_test_set]:
 					var check_point = Vector2(x,y) + check_direction
 					if bounds.has_point(check_point):
-						if board.getv(check_point.x, check_point.y) == m.DOOR:
+						if board.getv(check_point.x, check_point.y) == std[DoorType]:
 							# a diagonal is not a wall, don't add a path here
 							paths += 1
 				if paths > 0:
 					# there's an adjacent door, don't put one here.
 					return
-				board.setv(x, y, m.DOOR)
+				board.setv(x, y, std[DoorType])
 			loop_region(set_region_callback, region, false)
 
 	func recursive_build_path_dfs(total_path_tiles, depth, location: Vector2, starting=false, run=0) -> int:
@@ -272,7 +277,7 @@ class Level:
 			for check_direction in test_set:
 				var check_point = location + check_direction
 				if bounds.has_point(check_point):
-					if board.getv(check_point.x, check_point.y) != m.WALL:
+					if board.getv(check_point.x, check_point.y) != std[WallType]:
 						# a diagonal is not a wall, don't add a path here
 						test_points += 1
 			if test_points == 3:
@@ -280,9 +285,9 @@ class Level:
 				return total_path_tiles
 		# this point passes checks, mark it.
 		if starting:
-			board.setv(location.x, location.y, m.STAIRS)
+			board.setv(location.x, location.y, std[StairsType])
 		else:
-			board.setv(location.x, location.y, m.FLOOR)
+			board.setv(location.x, location.y, std[FloorType])
 		total_path_tiles += 1
 		# get a random value determinstically
 		var rngv: int = rng.get_value(rng.rtype.PATH, location, level_number, str(run))
@@ -304,7 +309,7 @@ class Level:
 					if new_location not in self.recursive_args['touched path']:
 						# mark that the location will be checked.
 						# avoid touching a location that already has a path. 
-						if board.getv(new_location.x, new_location.y) == m.WALL:
+						if board.getv(new_location.x, new_location.y) == std[WallType]:
 							total_path_tiles = recursive_build_path_dfs(total_path_tiles, depth+1, new_location)
 						self.recursive_args['touched path'][new_location] = true
 
@@ -344,7 +349,7 @@ class Level:
 			Vector2(potential_room.position+Vector2(potential_room.size.x-1,0)),
 			Vector2(potential_room.position+Vector2(0,potential_room.size.y-1)),
 		]:
-			if board.getv(corner.x, corner.y) != m.WALL:
+			if board.getv(corner.x, corner.y) != std[WallType]:
 				corners_pass_test = false
 				break
 		if not corners_pass_test:
@@ -421,10 +426,8 @@ class Level:
 			potential_room = good_room
 			tot_rooms += 1
 			last_room_attempt = attempts
-			#set_region(room_inside, m.MOB, true, true)
-			set_region(potential_room.grow_individual(-1,-1,-1,-1), m.FLOOR, true, true)
-			#set_region(potential_room, m.LOOT, false, false)
-			set_region(potential_room, m.WALL, false, false)
+			set_region(potential_room.grow_individual(-1,-1,-1,-1), std[FloorType], true, true)
+			set_region(potential_room, std[WallType], false, false)
 			build_doors(potential_room)
 			if tot_exits < n_exits:
 				# if this is the first valid room, drop an exit.
@@ -445,16 +448,16 @@ class Level:
 		target.y = region.position.y + y_loc
 		print("within room diff ", x_loc, " ", y_loc)
 		print("dropping a big ol exit all over the place ", target)
-		board.setv(target.x, target.y, m.DOWNSTAIRS)
+		board.setv(target.x, target.y, std[StairsType])
 		return 1
 
 	func move_player(change: Vector2):
 		var potential_location = player_location + change
-		#var potential_type = board.getv(potential_location.x, potential_location.y)
+		var potential_type = board.getv(potential_location.x, potential_location.y)
 		# can player move?
-		#if potential_type not in [m.FLOOR, m.DOOR, m.STAIRS]:
+		if gs.check_cheat(gs.cheat_names.NO_COLLISION) == false and potential_type.collision:
 			# nope, player cannot move into this.
-		#	return
+			return
 		# update player location
 		player_location = potential_location
 		draw(false)
@@ -526,9 +529,11 @@ class LastType extends GameObjectType:
 		color = ['000000']
 
 class PlayerType extends GameObjectType:
+	var max_health
 	var health
 	func _init():
-		health = 10
+		max_health = 10
+		health = max_health
 		collision = false
 		shape = ['@','']
 		color = ['cccc00','']
@@ -537,6 +542,8 @@ class PlayerType extends GameObjectType:
 			return '[color="#cccc00"][outline_size=1][outline_color="#ffffff"]@[/outline_color][/outline_size][/color]'
 		else:
 			return false
+	func get_health_str():
+		return str(health) + "/" + str(max_health)
 #endregion
 
 #region Rendering code
@@ -551,7 +558,6 @@ class Renderer:
 	var text_center: Vector2
 	var charmap: Dictionary
 	var animation_frame: int
-	var objmap: Dictionary
 	var gs: GameState
 
 	func _init(_be_container, _vp_container, _ts, _tc, _gs):
@@ -565,19 +571,6 @@ class Renderer:
 		text_center = _tc
 		animation_frame = 0
 		gs = _gs
-
-		# setup dictionary of displays.
-		objmap = {
-			Level.m.STAIRS: StairsType.new(),
-			Level.m.DOWNSTAIRS: StairsType.new(false),
-			Level.m.WALL: WallType.new(),
-			Level.m.FLOOR: FloorType.new(),
-			Level.m.DOOR: DoorType.new(),
-			Level.m.LOOT: LootType.new(),
-			Level.m.MOB: MobType.new(),
-			Level.m.LAST: LastType.new(),
-			'player': PlayerType.new()
-		}
 
 	func get_active_viewport() -> RichTextLabel:
 		return vp_container.get_children()[animation_frame]
@@ -653,10 +646,10 @@ class Renderer:
 					if cursor == player_loc and (animation_frame == 0 or not inactive):
 						# only draw the character every even frame; unless the draw was force updated.
 						# this allows whatever is under the character to be shown on the odd frames.
-						representation = objmap['player'].gframe(animation_frame)
+						representation = gs.player_obj.gframe(animation_frame)
 						if representation:
 							next_char = representation
-					representation = objmap[board.getv(cursor.x, cursor.y)].gframe(animation_frame)
+					representation = board.getv(cursor.x, cursor.y).gframe(animation_frame)
 					if representation and not next_char:
 						# only use this second object if there isn't already a character queued to be added.
 						next_char = representation
@@ -703,7 +696,10 @@ class GameState:
 	var new_counter = 0
 	var ViewPort
 	var history
+	var cheats = {}
+	enum cheat_names {NO_COLLISION}
 	var use_level
+	var player_obj
 	var kill_me_now_plz
 	var BaseElements
 	const animation_rate = 0.7
@@ -712,6 +708,7 @@ class GameState:
 
 	func _init(_use_level: Signal, _kill_me_now_plz: Signal, _ViewPort, _BaseElements) -> void:
 		BaseElements = _BaseElements
+		player_obj = PlayerType.new()
 		ViewPort = _ViewPort
 		kill_me_now_plz = _kill_me_now_plz
 		use_level = _use_level
@@ -719,6 +716,9 @@ class GameState:
 		history = History.new()
 		new_game()
 		current_scene = scenes.PLAY
+
+	func check_cheat(name: cheat_names):
+		return name in cheats and cheats[name]
 
 	func new_game():
 		last_render = 0
@@ -731,7 +731,7 @@ class GameState:
 		var curr_level = 1
 		var starting_location = Vector2(0,0)
 		# set some new level
-		use_level.emit(Level.new(kill_me_now_plz, my_rng, curr_level, renderer, starting_location))
+		use_level.emit(Level.new(self, kill_me_now_plz, my_rng, curr_level, renderer, starting_location))
 
 	func set_level(_level):
 		level = _level
@@ -799,6 +799,7 @@ func _process(delta):
 		return
 	gs.level.draw(true)
 	gs.last_render = 0
+	#gs.cheats[gs.cheat_names.NO_COLLISION] = true
 	# TODO find a way to run this after ready but just once and not process
 	initial_size_adjust()
 
