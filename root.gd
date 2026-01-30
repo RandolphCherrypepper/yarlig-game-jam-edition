@@ -1,4 +1,13 @@
+# YARLIG: Game Like Jam 7: Rogue-Like Edition
 # nothing more classic than a large monofile.
+
+# Future goals:
+# * map generation by choosing angles from center and projecting path/room out into available space (it's a chaos theory algorithm, forgot the name)
+# * detach mobs from space database similar to how player is detached
+# * mobs path find towards player
+# * weapons, armor, potions, etc
+# * more refactoring (nothing comes to mind but this file must have more copy/paste given its length)
+# * visibility
 
 extends Node2D
 
@@ -104,19 +113,22 @@ const directions = {
 
 class Level:
 	var rng
+	var actual_level
 	var level_number
 	var renderer
 	var player_location: Vector2
 	var board: CenteredArray2D
 	var kill_me_now_plz
 	var gs
+	var mobs = []
 	var recursive_args = {}
 	# standard GameObjectType
 	var std = {
 		DoorType: DoorType.new(),
 		WallType: WallType.new(),
 		FloorType: FloorType.new(),
-		StairsType: StairsType.new(),
+		UpStairsType: UpStairsType.new(),
+		DownStairsType: DownStairsType.new(),
 	}
 	func _init(parent: GameState, _kill_me_now_plz, _rng, _level, _renderer, start_location: Vector2):
 		gs = parent
@@ -125,7 +137,8 @@ class Level:
 		renderer = _renderer
 		kill_me_now_plz = _kill_me_now_plz
 		# level alone makes the first level a bit too bleak.
-		level_number = _level + 2
+		actual_level = _level
+		level_number = actual_level + 2
 		board = CenteredArray2D.new(3*level_number, 3*level_number, std[WallType])
 		#var bounds: Rect2 = board.rect()
 		# Perform a random walk from the starting location.
@@ -213,7 +226,7 @@ class Level:
 
 	func count_stairs(region: Rect2, interior: bool):
 		var _count_stairs = func(this_type):
-			return this_type == std[StairsType]
+			return this_type == std[UpStairsType] or this_type == std[DownStairsType]
 		return count_in_room(_count_stairs, region, interior)
 
 	func build_doors(region: Rect2):
@@ -230,7 +243,7 @@ class Level:
 				for check_direction in test_set:
 					var check_point = Vector2(x,y) + check_direction
 					if bounds.has_point(check_point):
-						if board.getv(check_point.x, check_point.y) in [std[FloorType], std[StairsType]]:
+						if board.getv(check_point.x, check_point.y) in [std[FloorType], std[UpStairsType], std[DownStairsType]]:
 							# a diagonal is not a wall, don't add a path here
 							paths += 1
 				if paths < 2:
@@ -283,7 +296,7 @@ class Level:
 				return total_path_tiles
 		# this point passes checks, mark it.
 		if starting:
-			board.setv(location.x, location.y, std[StairsType])
+			board.setv(location.x, location.y, std[UpStairsType])
 		else:
 			board.setv(location.x, location.y, std[FloorType])
 		total_path_tiles += 1
@@ -434,10 +447,15 @@ class Level:
 		print("n_rooms ", n_rooms, " to tot_rooms ", tot_rooms, " at attempt ", last_room_attempt, " out of ", attempts, " attempts")
 
 	func drop_exit(region: Rect2):
-		return drop_symbol(region, std[StairsType])
+		return drop_symbol(region, std[DownStairsType])
 
 	func drop_mob(region: Rect2):
-		return drop_symbol(region, MobType.new(level_number))
+		# create a mob. len(mobs) will be the index this mob has after appending into the list.
+		# add temporary location that will be updated later
+		var new_mob = MobType.new(self, actual_level, len(mobs), Vector2(0,0))
+		# keep track of all mobs
+		mobs.append(new_mob)
+		return drop_symbol(region, new_mob)
 
 	func drop_symbol(region: Rect2, obj: GameObjectType):
 		# find a random tile in the room and drop an exit on it.
@@ -460,6 +478,9 @@ class Level:
 			print("within room diff ", x_loc, " ", y_loc)
 			print("dropping a big ol exit all over the place ", target)
 			board.setv(target.x, target.y, obj)
+			if obj.has_method("dead"):
+				# this is a mob. update its location
+				obj.location = target
 			return 1
 		return 0
 
@@ -467,14 +488,25 @@ class Level:
 		var potential_location = player_location + change
 		var potential_type = board.getv(potential_location.x, potential_location.y)
 		# walking into a hittable?
-		if potential_type.hittable:
+		if potential_type.has_method('dead'):
 			# ATTACK!
-			potential_type.health -= 1
-			gs.history.add_line("YOU WACK THE THING FOR 1 HOLY SHIT")
+			#potential_type.health -= 1
+			#gs.history.add_line("YOU WACK THE THING FOR 1 HOLY SHIT")
+			var result = gs.player_obj.attack(potential_type)
+			gs.history.add_line(result)
 		# can player move?
 		if gs.check_cheat(gs.cheat_names.NO_COLLISION) == false and potential_type.collision:
 			# nope, player cannot move into this.
 			return
+		if potential_type == std[DoorType]:
+			gs.history.add_line("you enter the doorway.")
+		if potential_type == std[UpStairsType]:
+			gs.history.add_line("the stairs no longer look safe to use.")
+		if potential_type == std[DownStairsType]:
+			gs.history.add_line("you carefully climb down the crumbling stairs.")
+			# TODO NEW LEVEL SIGNAL!
+			var new_level = Level.new(gs, kill_me_now_plz, gs.my_rng, actual_level+1, renderer, player_location)
+			gs.use_level.emit(new_level)
 		# update player location
 		player_location = potential_location
 		draw(false)
@@ -487,7 +519,6 @@ class Level:
 #region Game Object Types
 class GameObjectType:
 	var collision: bool = true
-	var hittable: bool = false
 	var shape: Array[String]
 	var color: Array[String]
 	func gframe(animation_frame: int):
@@ -517,6 +548,12 @@ class StairsType extends GameObjectType:
 	func gframe(animation_frame: int):
 		self.shape = all_shape[self.up_direction]
 		return super(animation_frame)
+class UpStairsType extends StairsType:
+	func _init():
+		super(true)
+class DownStairsType extends StairsType:
+	func _init():
+		super(false)
 class WallType extends GameObjectType:
 	func _init():
 		shape = ['#']
@@ -536,22 +573,81 @@ class LootType extends GameObjectType:
 		collision = false
 		shape = ['?']
 		color = ['999999']
-class MobType extends GameObjectType:
-	var level
-	var max_health
-	var health
-	func _init(_level):
-		level = _level
-		max_health = level
-		health = max_health
-		hittable = true
-		shape = ['!']
-		color = ['cc0000']
 
-class PlayerType extends GameObjectType:
+@abstract class Character extends GameObjectType:
+	# character level
+	var clevel : int
 	var max_health
 	var health
-	func _init():
+	var subject_name
+	var location: Vector2
+	var object_name
+	var hit_damage = 1
+	var hittable = true
+	var dodge_chance: float
+	var rng_counter = 0
+	var gs_index
+	# game level (map)
+	var glevel : Level
+	func _init(_glevel, _clevel, _index, _location):
+		glevel = _glevel
+		clevel = _clevel
+		gs_index = _index
+		location = _location
+		# create a dodge chance based on level.
+		# as level increases, the subtraction nears 0, which increases dodge chance closer to 1
+		dodge_chance = 1.0 - 1.0/clevel
+		print("clevel ", clevel, " means dodge ", dodge_chance)
+	@abstract func dead()
+	func attack(other: Character) -> String:
+		# use level a little differently. normally this means "dungeon level" but here it's character level
+		var rngv: int = glevel.rng.get_value(self.hash(), location, glevel.level_number, str(rng_counter))
+		rng_counter += 1
+		# generate random % to hit (0-99)
+		var hit_chance = float(rngv % 100)/100
+		print("swing ", hit_chance)
+		# subtract 1/character level. As character level increases, this subtracts increasingly less.
+		hit_chance -= 1.0/clevel
+		print("adjust ", hit_chance)
+		if hit_chance < 0.1:
+			# set some minimum chance to hit.
+			hit_chance = 0.1
+		print("dodge chance ", other.dodge_chance)
+		var result = self.object_name + " attack " + other.subject_name + ", "
+		if hit_chance < other.dodge_chance:
+			return result + "but miss."
+		var dmg = self.hit_damage
+		result += "hitting " + other.subject_name + " for " + str(dmg)
+		other.health -= dmg
+		if other.health <= 0:
+			other.dead()
+			result += " and " + other.object_name + " drop to the floor."
+		else:
+			result += "."
+		return result
+
+class MobType extends Character:
+	func _init(_glevel, _clevel, _index, _location):
+		print("mob init ", _glevel)
+		super(_glevel, _clevel, _index, _location)
+		subject_name = "them"
+		object_name = "they"
+		max_health = 3*clevel
+		health = max_health
+		shape = ['M']
+		color = ['cc0000']
+		hittable = true
+	func dead():
+		glevel.board.setv(location.x, location.y, glevel.std[FloorType])
+		glevel.mobs.remove_at(gs_index)
+
+class PlayerType extends Character:
+	func _init(_glevel, _clevel, _location):
+		print("player init ", _glevel)
+		super(_glevel, _clevel, -1, _location)
+		subject_name = "you"
+		object_name = "you"
+		hittable = false # no hit self!
 		max_health = 10
 		health = max_health
 		shape = ['@','']
@@ -563,6 +659,11 @@ class PlayerType extends GameObjectType:
 			return false
 	func get_health_str():
 		return "HP:" + str(health) + "/" + str(max_health)
+	func dead():
+		glevel.gs.history.addline(object_name + " died.")
+		# TODO death screen
+		# for now, hard code a restart
+		glevel.gs.use_level.emit(1)
 #endregion
 
 #region Rendering code
@@ -748,7 +849,6 @@ class GameState:
 
 	func _init(_use_level: Signal, _kill_me_now_plz: Signal, _ViewPort, _BaseElements) -> void:
 		BaseElements = _BaseElements
-		player_obj = PlayerType.new()
 		ViewPort = _ViewPort
 		kill_me_now_plz = _kill_me_now_plz
 		use_level = _use_level
@@ -760,21 +860,26 @@ class GameState:
 	func check_cheat(name: cheat_names):
 		return name in cheats and cheats[name]
 
-	func new_game():
+	func new_game(update_counter = true):
 		last_render = 0
-		new_counter += 1
+		if update_counter:
+			new_counter += 1
 		renderer = Renderer.new(BaseElements, ViewPort, Vector2(25, 80), Vector2(11,40), self)
 		# TODO add seed from user here
+		# TODO restarting game with same seed does not generate the same level???
 		print("using seed ", new_counter)
 		my_rng = RNG.new(new_counter)
 		tick = 0
 		var curr_level = 1
 		var starting_location = Vector2(0,0)
 		# set some new level
-		use_level.emit(Level.new(self, kill_me_now_plz, my_rng, curr_level, renderer, starting_location))
+		var new_level = Level.new(self, kill_me_now_plz, my_rng, curr_level, renderer, starting_location)
+		player_obj = PlayerType.new(new_level, 1, starting_location)
+		use_level.emit(new_level)
 
 	func set_level(_level):
 		level = _level
+		player_obj.glevel = level
 		level.draw(false)
 
 	func enable_help():
@@ -832,7 +937,7 @@ func _ready():
 	kill_me_now_plz.connect(quit)
 	gs = GameState.new(use_level, kill_me_now_plz, ViewPort, BaseElements)
 	#gs.cheats[gs.cheat_names.NO_COLLISION] = true
-	gs.cheats[gs.cheat_names.PLAYER_LOCATION] = true
+	#gs.cheats[gs.cheat_names.PLAYER_LOCATION] = true
 
 func _process(delta):
 	gs.last_render += delta
@@ -893,6 +998,8 @@ func _input(event: InputEvent) -> void:
 			gs.level.move_player(Vector2(0,1))
 		if event.is_action_pressed("ui_new"):
 			gs.new_game()
+		if event.is_action_pressed("ui_restart"):
+			gs.new_game(false)
 		if event.is_action_pressed("ui_help"):
 			gs.enable_help()
 		if event.is_action_pressed("ui_history"):

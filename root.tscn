@@ -58,25 +58,43 @@ offset_right = 582.0
 offset_bottom = 353.0
 theme = ExtResource("1_pq8q7")
 bbcode_enabled = true
-text = "Quit [ Q ] | New [ backspace ] | Help [ ? ] | History [tab] |
+text = "Quit [ Q ] | Help [ ? ] | History [tab]
 [hr]"
 scroll_active = false
 autowrap_mode = 0
 autowrap_trim_flags = 0
 
 [node name="Help" type="RichTextLabel" parent="Base Elements"]
-visible = false
 z_index = -1
 offset_right = 582.0
-offset_bottom = 353.0
+offset_bottom = 430.0
 theme = ExtResource("1_pq8q7")
 bbcode_enabled = true
 text = "
 
-There is no save. There is no load.
+There is no save. There is no load. There is no experience. There is no leveling. Go into rooms, beat on mobs, go down stairs.
+
+Buttons:
+[Q] : quit
+[?] : enter and exit help
+[R] : restart level
+[Backspace] : new level
+[Tab] : enter and exit history
+[=/+] : zoom in (use full screen in browser)
+[-] : zoom out (use full screen in browser)
+[up down left right arrows / h j k l] : movement
+
+Symbols:
+@ : you
+# : wall
+. : floor
+M : mob
+^ : stairs up (unusable)
+v : stairs down
+
 "
 scroll_active = false
-autowrap_mode = 0
+autowrap_mode = 2
 autowrap_trim_flags = 0
 
 [node name="History" type="RichTextLabel" parent="Base Elements"]
