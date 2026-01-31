@@ -517,7 +517,7 @@ class Level:
 			renderer.swap_viewport()
 
 #region Game Object Types
-class GameObjectType:
+@abstract class GameObjectType:
 	var collision: bool = true
 	var shape: Array[String]
 	var color: Array[String]
@@ -530,10 +530,9 @@ class GameObjectType:
 			return '[color="#' + this_color + '"]' + this_shape + '[/color]'
 		else:
 			return false
-	func hash():
-		return get_instance_id()
+	@abstract func hash() -> int
 
-class StairsType extends GameObjectType:
+@abstract class StairsType extends GameObjectType:
 	var up_direction
 	var all_shape
 	var all_color
@@ -551,28 +550,40 @@ class StairsType extends GameObjectType:
 class UpStairsType extends StairsType:
 	func _init():
 		super(true)
+	func hash():
+		return 0
 class DownStairsType extends StairsType:
 	func _init():
 		super(false)
+	func hash():
+		return 1
 class WallType extends GameObjectType:
 	func _init():
 		shape = ['#']
 		color = ['c0a060']
+	func hash():
+		return 2
 class FloorType extends GameObjectType:
 	func _init():
 		collision = false
 		shape = ['.']
 		color = ['00cc00']
+	func hash():
+		return 3
 class DoorType extends GameObjectType:
 	func _init():
 		collision = false
 		shape = ['+']
 		color = ['cccc00']
+	func hash():
+		return 4
 class LootType extends GameObjectType:
 	func _init():
 		collision = false
 		shape = ['?']
 		color = ['999999']
+	func hash():
+		return 5
 
 @abstract class Character extends GameObjectType:
 	# character level
@@ -640,6 +651,8 @@ class MobType extends Character:
 	func dead():
 		glevel.board.setv(location.x, location.y, glevel.std[FloorType])
 		glevel.mobs.remove_at(gs_index)
+	func hash():
+		return 6
 
 class PlayerType extends Character:
 	func _init(_glevel, _clevel, _location):
@@ -664,6 +677,8 @@ class PlayerType extends Character:
 		# TODO death screen
 		# for now, hard code a restart
 		glevel.gs.use_level.emit(1)
+	func hash():
+		return 7
 #endregion
 
 #region Rendering code
@@ -866,7 +881,6 @@ class GameState:
 			new_counter += 1
 		renderer = Renderer.new(BaseElements, ViewPort, Vector2(25, 80), Vector2(11,40), self)
 		# TODO add seed from user here
-		# TODO restarting game with same seed does not generate the same level???
 		print("using seed ", new_counter)
 		my_rng = RNG.new(new_counter)
 		tick = 0
