@@ -2,3 +2,4 @@
 .editorconfig
 .godot/
 /android/
+Build/
