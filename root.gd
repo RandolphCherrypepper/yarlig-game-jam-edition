@@ -706,14 +706,15 @@ class PlayerType extends Character:
 			# if we attacked, there is no movement.
 			# but if we did not attack, let's check for movement.
 			super(change, is_player)
-		if potential_location != location:
-			# we moved from one place to another
-			getting_in_those_steps += 1
-		if getting_in_those_steps >= 10:
+			if potential_location == location:
+				# we moved into the potential location or waited
+				getting_in_those_steps += 1
+		if getting_in_those_steps >= 30:
 			# regain health from walkin around.
 			health += 1
 			if health > max_health:
 				health = max_health
+				getting_in_those_steps = 0
 
 		if potential_type == gs.level.std[DoorType]:
 			gs.history.add_line("you enter the doorway.")
@@ -819,7 +820,7 @@ class Renderer:
 			for i in range(len(history), 23):
 				text += "\n"
 		if gs.history.n_lines() > 23:
-			text += "^ SCROLL UP\n"
+			text += "^ FURTHER HISTORY LOST TO TIME\n"
 			history = history.slice(1)
 		for line in history:
 			text += line + "\n"
@@ -848,8 +849,8 @@ class Renderer:
 		# setup map/board/level text
 		var map = "\n\n"
 
-		# scan through the screen size. 2 empty rows on top, 2 empty rows on bottom, so -4
-		for r in range(0, text_shape.x-4):
+		# scan through the screen size. 2 empty rows on top, 3 empty rows on bottom, so -5
+		for r in range(0, text_shape.x-5):
 			for c in range(0, text_shape.y):
 				# convert screen coordinate to play coordinate.
 				var cursor = Vector2(r,c) - delta
@@ -906,10 +907,12 @@ class History:
 			text = " " + text
 		logs.append(text)
 	func get_line():
-		# get only the last line from the log history
+		# get the last two lines from the log history
 		if len(logs) == 0:
-			return ""
-		return logs[-1]
+			return "\n"
+		if len(logs) == 1:
+			return logs[-1] + "\n"
+		return logs[-2] + "\n" + logs[-1]
 	func get_lines(offset=0):
 		# return the last 23 lines of history
 		if len(logs) < 23:
