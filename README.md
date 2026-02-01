@@ -4,7 +4,7 @@ Yet Another Rogue-Like in Godot. Game Jam Edition.
 
 ## What is it?
 
-This game is based on the original 1980s Rogue. "Based" is used loosely. "Game" is used loosely. The visual design was also inspired by Dwarf Fortress and Cataclysm.
+This game is based on the original 1980s Rogue. "Based" is used loosely. "Game" is used loosely. The visual design was also inspired by Dwarf Fortress and Cataclysm. The project was written for and built in Godot 4.5.1 in Linux. Built for web.
 
 This game was built as part of Hyper Game Dev's 7th Game-like Jam focusing on Rogue-like games. The jam was 31 days, though I used considerably less. Possibly like 10 or 11 days spread out over the 31.
 
