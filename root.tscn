@@ -58,14 +58,13 @@ offset_right = 673.0
 offset_bottom = 431.0
 theme = ExtResource("1_pq8q7")
 bbcode_enabled = true
-text = "Quit [ Q ] | Help [ ? ] | History [tab]
+text = "Quit [ Ctrl-Q ] | Help [ ? ] | History [tab]
 [hr]"
 scroll_active = false
 autowrap_mode = 0
 autowrap_trim_flags = 0
 
 [node name="Help" type="RichTextLabel" parent="Base Elements"]
-visible = false
 z_index = -1
 offset_right = 672.0
 offset_bottom = 430.0
@@ -73,10 +72,10 @@ theme = ExtResource("1_pq8q7")
 bbcode_enabled = true
 text = "
 
-There is no save. There is no load. There is no experience. There is no leveling. Go into rooms, beat on mobs, go down stairs.
+There is no save. There is no load. There is no experience. There is no leveling. There is no winning. Go into rooms, beat on mobs, go down stairs.
 
 Buttons:
-[Q] : quit
+[Q / Ctrl-Q] : quit
 [?] : enter and exit help
 [R] : restart level
 [Backspace] : new level
@@ -109,6 +108,30 @@ bbcode_enabled = true
 scroll_active = false
 autowrap_mode = 0
 autowrap_trim_flags = 0
+
+[node name="Seed" type="RichTextLabel" parent="Base Elements"]
+visible = false
+z_index = -1
+offset_right = 673.0
+offset_bottom = 429.0
+theme = ExtResource("1_pq8q7")
+bbcode_enabled = true
+text = "
+
+
+Enter the Game Seed and press Enter/Return:"
+scroll_active = false
+autowrap_mode = 0
+autowrap_trim_flags = 0
+
+[node name="SEED" type="LineEdit" parent="Base Elements/Seed"]
+layout_mode = 0
+offset_left = 3.0
+offset_top = 72.0
+offset_right = 214.0
+offset_bottom = 97.0
+theme = ExtResource("1_pq8q7")
+placeholder_text = "Seed go here"
 
 [node name="Dead" type="RichTextLabel" parent="Base Elements"]
 visible = false

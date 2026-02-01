@@ -658,6 +658,7 @@ class MobType extends Character:
 		return 6
 
 class PlayerType extends Character:
+	var getting_in_those_steps
 	func _init(_glevel, _clevel, _location):
 		super(_glevel, _clevel, _location)
 		subject_name = "you"
@@ -665,6 +666,7 @@ class PlayerType extends Character:
 		hittable = false # no hit self!
 		max_health = 10
 		health = max_health
+		getting_in_those_steps = 0
 		shape = ['@','']
 		color = ['cccc00','']
 	func gframe(animation_frame: int):
@@ -676,7 +678,7 @@ class PlayerType extends Character:
 		return "HP:" + str(health) + "/" + str(max_health)
 	func dead():
 		gs.history.add_line(object_name + " died.")
-		gs.current_scene = gs.scenes.DEAD
+		gs.enable_dead()
 		# TODO death screen
 	func attack(other: Character):
 		# hard code being counter attacked for now
@@ -704,6 +706,14 @@ class PlayerType extends Character:
 			# if we attacked, there is no movement.
 			# but if we did not attack, let's check for movement.
 			super(change, is_player)
+		if potential_location != location:
+			# we moved from one place to another
+			getting_in_those_steps += 1
+		if getting_in_those_steps >= 10:
+			# regain health from walkin around.
+			health += 1
+			if health > max_health:
+				health = max_health
 
 		if potential_type == gs.level.std[DoorType]:
 			gs.history.add_line("you enter the doorway.")
@@ -729,6 +739,8 @@ class Renderer:
 	var be_commands: RichTextLabel
 	var be_help: RichTextLabel
 	var be_history: RichTextLabel
+	var be_seed: RichTextLabel
+	var le_seed: LineEdit
 	var be_dead: RichTextLabel
 	var vp_container: Node2D
 	var text_shape: Vector2
@@ -743,6 +755,8 @@ class Renderer:
 		be_commands = _be_container.get_node_and_resource("Commands")[0]
 		be_help = _be_container.get_node_and_resource("Help")[0]
 		be_history = _be_container.get_node_and_resource("History")[0]
+		be_seed = _be_container.get_node_and_resource("Seed")[0]
+		le_seed = be_seed.get_node_and_resource("SEED")[0]
 		be_dead = _be_container.get_node_and_resource("Dead")[0]
 		vp_container = _vp_container
 		text_shape = _ts
@@ -757,10 +771,12 @@ class Renderer:
 		# if animation frame is 0, then 1-0=1. if frame is 1, then 1-1=0.
 		return vp_container.get_children()[1-animation_frame]
 
-	func fill_viewport(level: Level, inactive=true):
+	func fill_viewport(level: Level = null, inactive=true):
 		# TODO fix this somewhere else
 		if gs.current_scene == null:
 			gs.current_scene = gs.scenes.PLAY
+		if gs.current_scene == gs.scenes.SEED:
+			fill_viewport_seed()
 		if gs.current_scene == gs.scenes.HELP:
 			fill_viewport_help()
 		if gs.current_scene == gs.scenes.DEAD:
@@ -770,32 +786,31 @@ class Renderer:
 		if gs.current_scene == gs.scenes.PLAY:
 			fill_viewport_game(level, inactive)
 
-	func fill_viewport_help():
+	func hide_all():
 		be_cr.show()
 		be_dtfs.hide()
 		be_commands.show()
-		be_help.show()
+		be_help.hide()
 		be_history.hide()
+		be_seed.hide()
 		be_dead.hide()
 		vp_container.hide()
+
+	func fill_viewport_help():
+		hide_all()
+		be_help.show()
 
 	func fill_viewport_dead():
-		be_cr.show()
-		be_dtfs.hide()
-		be_commands.show()
-		be_help.hide()
-		be_history.hide()
+		hide_all()
 		be_dead.show()
-		vp_container.hide()
+
+	func fill_viewport_seed():
+		hide_all()
+		be_seed.show()
 
 	func fill_viewport_history():
-		be_cr.show()
-		be_dtfs.hide()
-		be_commands.show()
-		be_help.hide()
+		hide_all()
 		be_history.show()
-		be_dead.hide()
-		vp_container.hide()
 
 		var text = "\n\n"
 		var history = gs.history.get_lines()
@@ -811,12 +826,7 @@ class Renderer:
 		be_history.text = text
 
 	func fill_viewport_game(level: Level, inactive=true):
-		be_cr.show()
-		be_dtfs.hide()
-		be_commands.show()
-		be_help.hide()
-		be_history.hide()
-		be_dead.hide()
+		hide_all()
 		vp_container.show()
 
 		# determine which frame we're in.
@@ -914,7 +924,7 @@ class GameState:
 	var renderer
 	var level: Level
 	var last_render = 0
-	var new_counter = 0
+	var old_seed
 	var ViewPort
 	var history
 	var cheats = {}
@@ -923,7 +933,7 @@ class GameState:
 	var kill_me_now_plz
 	var BaseElements
 	const animation_rate = 0.7
-	enum scenes {PLAY, HELP, HISTORY, DEAD}
+	enum scenes {SEED, PLAY, HELP, HISTORY, DEAD}
 	var current_scene
 
 	func _init(_kill_me_now_plz: Signal, _ViewPort, _BaseElements) -> void:
@@ -936,14 +946,22 @@ class GameState:
 	func check_cheat(name: cheat_names):
 		return name in cheats and cheats[name]
 
-	func new_game(update_counter = true):
+	func new_game(request_seed = true):
 		last_render = 0
-		if update_counter:
-			new_counter += 1
+		if not level:
+			# this avoids a bug. TODO fix it correctly
+			new_game_with_seed("1")
+		if request_seed:
+			enable_seed()
+		else:
+			new_game_with_seed(old_seed)
+	
+	func new_game_with_seed(_seed):
 		renderer = Renderer.new(BaseElements, ViewPort, Vector2(25, 80), Vector2(11,40), self)
 		# TODO add seed from user here
-		print("using seed ", new_counter)
-		my_rng = RNG.new(new_counter)
+		print("using seed ", _seed)
+		my_rng = RNG.new(_seed)
+		old_seed = _seed
 		tick = 0
 		var curr_level = 1
 		var starting_location = Vector2(0,0)
@@ -958,13 +976,25 @@ class GameState:
 
 	func enable_help():
 		current_scene = scenes.HELP
-
 	func disable_help():
 		current_scene = scenes.PLAY
 
+	func enable_seed():
+		current_scene = scenes.SEED
+		renderer.fill_viewport()
+		var poop : LineEdit = renderer.le_seed
+		poop.grab_focus()
+		poop.text_submitted.connect(disable_seed)
+		
+	func disable_seed(new_seed):
+		new_game_with_seed(new_seed)
+		#current_scene = scenes.PLAY
+
+	func enable_dead():
+		current_scene = scenes.DEAD
+
 	func enable_history():
 		current_scene = scenes.HISTORY
-
 	func disable_history():
 		current_scene = scenes.PLAY
 
@@ -1018,6 +1048,9 @@ func _process(delta):
 	if gs.last_render < gs.animation_rate:
 		# not time to update animation yet.
 		return
+	if gs.current_scene == gs.scenes.SEED:
+		# no need to animate the seed page, messes with input
+		return
 	gs.level.draw(true)
 	gs.last_render = 0
 	# TODO find a way to run this after ready but just once and not process
@@ -1042,6 +1075,13 @@ func zoom(mooz=false):
 	did_size_adjustment = false
 
 func _input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_special_quit"):
+		kill_me_now_plz.emit()
+
+	# No command processing if le_seed LineEdit has the focus.
+	if gs.renderer.le_seed.has_focus():
+		return
+	
 	# Global Commands
 	if event.is_action_pressed("ui_ENHANCE"):
 		zoom()
@@ -1049,6 +1089,7 @@ func _input(event: InputEvent) -> void:
 		zoom(true)
 	if event.is_action_pressed("ui_quit"):
 		kill_me_now_plz.emit()
+
 
 	# Help Commands
 	if gs.current_scene == gs.scenes.HELP:
