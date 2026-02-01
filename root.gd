@@ -1,4 +1,4 @@
-# YARLIG: Game Like Jam 7: Rogue-Like Edition
+# YARLIG: Game Jam Edition
 # nothing more classic than a large monofile.
 
 # Future goals:
