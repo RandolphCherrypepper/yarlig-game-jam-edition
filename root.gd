@@ -14,7 +14,6 @@ extends Node2D
 @export var ViewPort : Node2D
 
 signal kill_me_now_plz
-signal use_level(Level)
 
 #region RNG Engine
 # modified from my code originally used in https://tallpear.itch.io/lil-guys-candy-run
@@ -646,7 +645,7 @@ class MobType extends Character:
 		super(_glevel, _clevel, _location)
 		subject_name = "them"
 		object_name = "they"
-		max_health = 3*clevel
+		max_health = 3+clevel
 		health = max_health
 		shape = ['M']
 		color = ['cc0000']
@@ -678,8 +677,6 @@ class PlayerType extends Character:
 	func dead():
 		gs.history.addline(object_name + " died.")
 		# TODO death screen
-		# for now, hard code a restart
-		gs.use_level.emit(1)
 	func attack(other: Character):
 		# hard code being counter attacked for now
 		super(other)
@@ -717,6 +714,7 @@ class PlayerType extends Character:
 				# TODO NEW LEVEL SIGNAL!
 				#var new_level = Level.new(gs, kill_me_now_plz, gs.my_rng, actual_level+1, renderer, location)
 				#gs.use_level.emit(new_level)
+				gs.set_level(gs.level.actual_level+1, location)
 			else:
 				gs.history.add_line("an invisible force stops your progress.")
 	func hash():
@@ -856,7 +854,7 @@ class Renderer:
 		# Status line near bottom
 		if gs.check_cheat(gs.cheat_names.PLAYER_LOCATION):
 			map += "LOC:" + str(player_loc) + " "
-		map += gs.player_obj.get_health_str() + "\n"
+		map += gs.player_obj.get_health_str() + " FLR:" + str(gs.level.actual_level) + "\n"
 		# History line on the bottom
 		map += gs.history.get_line() + "\n"
 		viewport.text = map
@@ -904,7 +902,6 @@ class GameState:
 	var history
 	var cheats = {}
 	enum cheat_names {NO_COLLISION, PLAYER_LOCATION}
-	var use_level
 	var player_obj
 	var kill_me_now_plz
 	var BaseElements
@@ -912,12 +909,10 @@ class GameState:
 	enum scenes {PLAY, HELP, HISTORY}
 	var current_scene
 
-	func _init(_use_level: Signal, _kill_me_now_plz: Signal, _ViewPort, _BaseElements) -> void:
+	func _init(_kill_me_now_plz: Signal, _ViewPort, _BaseElements) -> void:
 		BaseElements = _BaseElements
 		ViewPort = _ViewPort
 		kill_me_now_plz = _kill_me_now_plz
-		use_level = _use_level
-		use_level.connect(set_level)
 		history = History.new()
 		new_game()
 		current_scene = scenes.PLAY
@@ -937,13 +932,11 @@ class GameState:
 		var curr_level = 1
 		var starting_location = Vector2(0,0)
 		# set some new level
-		var new_level = Level.new(self, kill_me_now_plz, my_rng, curr_level, renderer, starting_location)
 		player_obj = PlayerType.new(self, 3, starting_location)
-		use_level.emit(new_level)
+		set_level(curr_level, starting_location)
 
-	func set_level(_level):
-		level = _level
-		#player_obj.glevel = level # no longer necessary?
+	func set_level(curr_level, starting_location):
+		level = Level.new(self, kill_me_now_plz, my_rng, curr_level, renderer, starting_location)
 		level.draw(false)
 
 	func enable_help():
@@ -999,9 +992,9 @@ func initial_size_adjust():
 var gs
 func _ready():
 	kill_me_now_plz.connect(quit)
-	gs = GameState.new(use_level, kill_me_now_plz, ViewPort, BaseElements)
+	gs = GameState.new(kill_me_now_plz, ViewPort, BaseElements)
 	#gs.cheats[gs.cheat_names.NO_COLLISION] = true
-	gs.cheats[gs.cheat_names.PLAYER_LOCATION] = true
+	#gs.cheats[gs.cheat_names.PLAYER_LOCATION] = true
 
 func _process(delta):
 	gs.last_render += delta
