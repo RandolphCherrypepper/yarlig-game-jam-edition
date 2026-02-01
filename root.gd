@@ -645,7 +645,7 @@ class MobType extends Character:
 		super(_glevel, _clevel, _location)
 		subject_name = "them"
 		object_name = "they"
-		max_health = 3+clevel
+		max_health = 2+clevel
 		health = max_health
 		shape = ['M']
 		color = ['cc0000']
@@ -675,7 +675,8 @@ class PlayerType extends Character:
 	func get_health_str():
 		return "HP:" + str(health) + "/" + str(max_health)
 	func dead():
-		gs.history.addline(object_name + " died.")
+		gs.history.add_line(object_name + " died.")
+		gs.current_scene = gs.scenes.DEAD
 		# TODO death screen
 	func attack(other: Character):
 		# hard code being counter attacked for now
@@ -728,6 +729,7 @@ class Renderer:
 	var be_commands: RichTextLabel
 	var be_help: RichTextLabel
 	var be_history: RichTextLabel
+	var be_dead: RichTextLabel
 	var vp_container: Node2D
 	var text_shape: Vector2
 	var text_center: Vector2
@@ -741,6 +743,7 @@ class Renderer:
 		be_commands = _be_container.get_node_and_resource("Commands")[0]
 		be_help = _be_container.get_node_and_resource("Help")[0]
 		be_history = _be_container.get_node_and_resource("History")[0]
+		be_dead = _be_container.get_node_and_resource("Dead")[0]
 		vp_container = _vp_container
 		text_shape = _ts
 		text_center = _tc
@@ -760,6 +763,8 @@ class Renderer:
 			gs.current_scene = gs.scenes.PLAY
 		if gs.current_scene == gs.scenes.HELP:
 			fill_viewport_help()
+		if gs.current_scene == gs.scenes.DEAD:
+			fill_viewport_dead()
 		if gs.current_scene == gs.scenes.HISTORY:
 			fill_viewport_history()
 		if gs.current_scene == gs.scenes.PLAY:
@@ -771,6 +776,16 @@ class Renderer:
 		be_commands.show()
 		be_help.show()
 		be_history.hide()
+		be_dead.hide()
+		vp_container.hide()
+
+	func fill_viewport_dead():
+		be_cr.show()
+		be_dtfs.hide()
+		be_commands.show()
+		be_help.hide()
+		be_history.hide()
+		be_dead.show()
 		vp_container.hide()
 
 	func fill_viewport_history():
@@ -779,6 +794,7 @@ class Renderer:
 		be_commands.show()
 		be_help.hide()
 		be_history.show()
+		be_dead.hide()
 		vp_container.hide()
 
 		var text = "\n\n"
@@ -800,6 +816,7 @@ class Renderer:
 		be_commands.show()
 		be_help.hide()
 		be_history.hide()
+		be_dead.hide()
 		vp_container.show()
 
 		# determine which frame we're in.
@@ -906,7 +923,7 @@ class GameState:
 	var kill_me_now_plz
 	var BaseElements
 	const animation_rate = 0.7
-	enum scenes {PLAY, HELP, HISTORY}
+	enum scenes {PLAY, HELP, HISTORY, DEAD}
 	var current_scene
 
 	func _init(_kill_me_now_plz: Signal, _ViewPort, _BaseElements) -> void:
@@ -915,7 +932,6 @@ class GameState:
 		kill_me_now_plz = _kill_me_now_plz
 		history = History.new()
 		new_game()
-		current_scene = scenes.PLAY
 
 	func check_cheat(name: cheat_names):
 		return name in cheats and cheats[name]
@@ -934,6 +950,7 @@ class GameState:
 		# set some new level
 		player_obj = PlayerType.new(self, 3, starting_location)
 		set_level(curr_level, starting_location)
+		current_scene = scenes.PLAY
 
 	func set_level(curr_level, starting_location):
 		level = Level.new(self, kill_me_now_plz, my_rng, curr_level, renderer, starting_location)
@@ -1064,3 +1081,11 @@ func _input(event: InputEvent) -> void:
 			gs.enable_help()
 		if event.is_action_pressed("ui_history"):
 			gs.enable_history()
+
+	# you died
+	elif gs.current_scene == gs.scenes.DEAD:
+		if event.is_action_pressed("ui_new"):
+			gs.new_game()
+		if event.is_action_pressed("ui_restart"):
+			gs.new_game(false)
+		# TODO history would be great, but how to get back to dead when leave history?
