@@ -388,7 +388,6 @@ class Level:
 		var n_rooms = rngv % (2*level_number)
 		# modify max n_rooms based on how many paths exist.
 		if (n_rooms*3) > n_path_tiles:
-			print("reducing n rooms")
 			@warning_ignore("integer_division")
 			n_rooms = int(n_path_tiles/3)
 		if n_rooms < 2:
@@ -452,8 +451,6 @@ class Level:
 		var counter = 5
 		for i in range(0, counter):
 			var rngv: int = rng.get_value("room", region.position, level_number, str(i))
-			print("position ", region.position)
-			print("region ", region.size)
 			var target = Vector2(0,0)
 			var x_loc = (rngv % 16384) % int(region.size.x-2) + 1
 			target.x = region.position.x + x_loc
@@ -601,27 +598,30 @@ class LootType extends GameObjectType:
 		# use level a little differently. normally this means "dungeon level" but here it's character level
 		var rngv: int = gs.level.rng.get_value(self.hash(), location, gs.level.level_number, str(rng_counter))
 		rng_counter += 1
+		# create a hit chance based on level. Level 1 => 0.5, Level 2 => 0.66, Level 3 => 0.75
+		var hit_chance = (1.0 - 1.0/(clevel+1))
+		# reduce hit chance by opposed dodge
+		print("level based chance ", hit_chance)
+		hit_chance = hit_chance * (1.0-other.dodge_chance)
+		print("other dodge chance ", other.dodge_chance)
+		print("modified chance ", hit_chance)
 		# generate random % to hit (0-99)
-		var hit_chance = float(rngv % 100)/100
-		print("swing ", hit_chance)
+		var hit_roll = float(rngv % 100)/100
+		print("against roll ", hit_roll)
+		print("")
 		# subtract 1/character level. As character level increases, this subtracts increasingly less.
-		hit_chance -= 1.0/clevel
-		print("adjust ", hit_chance)
-		if hit_chance < 0.1:
-			# set some minimum chance to hit.
-			hit_chance = 0.1
-		print("dodge chance ", other.dodge_chance)
 		var result = self.object_name + " attack " + other.subject_name + ", "
-		if hit_chance < other.dodge_chance:
-			return result + "but miss."
-		var dmg = self.hit_damage
-		result += "hitting " + other.subject_name + " for " + str(dmg)
-		other.health -= dmg
-		if other.health <= 0:
-			other.dead()
-			result += " and " + other.object_name + " drop to the floor."
+		if hit_roll > hit_chance:
+			result += "but miss."
 		else:
-			result += "."
+			var dmg = self.hit_damage
+			result += "hitting " + other.subject_name + " for " + str(dmg)
+			other.health -= dmg
+			if other.health <= 0:
+				other.dead()
+				result += " and " + other.object_name + " drop to the floor."
+			else:
+				result += "."
 		gs.history.add_line(result)
 		#return result
 	func move(change: Vector2, is_player = false):
@@ -643,7 +643,6 @@ class LootType extends GameObjectType:
 
 class MobType extends Character:
 	func _init(_glevel, _clevel, _location):
-		print("mob init ", _glevel)
 		super(_glevel, _clevel, _location)
 		subject_name = "them"
 		object_name = "they"
@@ -661,7 +660,6 @@ class MobType extends Character:
 
 class PlayerType extends Character:
 	func _init(_glevel, _clevel, _location):
-		print("player init ", _glevel)
 		super(_glevel, _clevel, _location)
 		subject_name = "you"
 		object_name = "you"
@@ -940,7 +938,7 @@ class GameState:
 		var starting_location = Vector2(0,0)
 		# set some new level
 		var new_level = Level.new(self, kill_me_now_plz, my_rng, curr_level, renderer, starting_location)
-		player_obj = PlayerType.new(self, 1, starting_location)
+		player_obj = PlayerType.new(self, 3, starting_location)
 		use_level.emit(new_level)
 
 	func set_level(_level):
