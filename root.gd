@@ -115,7 +115,6 @@ class Level:
 	var actual_level
 	var level_number
 	var renderer
-	var player_location: Vector2
 	var board: CenteredArray2D
 	var kill_me_now_plz
 	var gs
@@ -131,7 +130,6 @@ class Level:
 	}
 	func _init(parent: GameState, _kill_me_now_plz, _rng, _level, _renderer, start_location: Vector2):
 		gs = parent
-		player_location = start_location
 		rng = _rng
 		renderer = _renderer
 		kill_me_now_plz = _kill_me_now_plz
@@ -476,7 +474,7 @@ class Level:
 		if target[0] == false:
 			return 0
 		# generate a mob at the location
-		var new_mob = MobType.new(self, actual_level, target[1])
+		var new_mob = MobType.new(gs, actual_level, target[1])
 		mobs.append(new_mob)
 		return 1
 
@@ -498,48 +496,6 @@ class Level:
 			# this is a mob. update its location
 			obj.location = target[1]
 		return 1
-
-	func move_player(change: Vector2):
-		# moves player, then activates Other Stuff (tm)
-		var potential_location = player_location + change
-		var potential_type = board.getv(potential_location.x, potential_location.y)
-		var potential_mob = null
-		for mob in mobs:
-			if mob.location == potential_location:
-				potential_mob = mob
-		# walking into a hittable?
-		var collision = false
-		if potential_mob != null:
-			# ATTACK!
-			var result = gs.player_obj.attack(potential_mob)
-			gs.history.add_line(result)
-			collision = true
-		# can player move?
-		if potential_type.collision:
-			collision = true
-		if gs.check_cheat(gs.cheat_names.NO_COLLISION) == false and collision:
-			# nope, player cannot move into this.
-			return
-		if potential_type == std[DoorType]:
-			gs.history.add_line("you enter the doorway.")
-		if potential_type == std[UpStairsType]:
-			gs.history.add_line("the stairs no longer look safe to use.")
-		if potential_type == std[DownStairsType]:
-			if len(mobs) == 0:
-				gs.history.add_line("you carefully climb down the crumbling stairs.")
-				# TODO NEW LEVEL SIGNAL!
-				var new_level = Level.new(gs, kill_me_now_plz, gs.my_rng, actual_level+1, renderer, player_location)
-				gs.use_level.emit(new_level)
-			else:
-				gs.history.add_line("an invisible force stops your progress.")
-		# update player location
-		player_location = potential_location
-
-		# what nearby stuff can interact?
-		for mob in mobs:
-			print(mob.location)
-
-		draw(false)
 
 	func draw(swap=false):
 		renderer.fill_viewport(self, swap)
@@ -628,9 +584,9 @@ class LootType extends GameObjectType:
 	var dodge_chance: float
 	var rng_counter = 0
 	# game level (map)
-	var glevel : Level
-	func _init(_glevel, _clevel, _location):
-		glevel = _glevel
+	var gs : GameState
+	func _init(_gs, _clevel, _location):
+		gs = _gs
 		clevel = _clevel
 		location = _location
 		# create a dodge chance based on level.
@@ -638,9 +594,12 @@ class LootType extends GameObjectType:
 		dodge_chance = 1.0 - 1.0/clevel
 		print("clevel ", clevel, " means dodge ", dodge_chance)
 	@abstract func dead()
-	func attack(other: Character) -> String:
+	func attack(other: Character):
+		# double check we're not dead.
+		if health <= 0:
+			return
 		# use level a little differently. normally this means "dungeon level" but here it's character level
-		var rngv: int = glevel.rng.get_value(self.hash(), location, glevel.level_number, str(rng_counter))
+		var rngv: int = gs.level.rng.get_value(self.hash(), location, gs.level.level_number, str(rng_counter))
 		rng_counter += 1
 		# generate random % to hit (0-99)
 		var hit_chance = float(rngv % 100)/100
@@ -663,7 +622,24 @@ class LootType extends GameObjectType:
 			result += " and " + other.object_name + " drop to the floor."
 		else:
 			result += "."
-		return result
+		gs.history.add_line(result)
+		#return result
+	func move(change: Vector2, is_player = false):
+		# moves player, then activates Other Stuff (tm)
+		var potential_location = location + change
+		var potential_type = gs.level.board.getv(potential_location.x, potential_location.y)
+		# can character move?
+		var did_collide = false
+		if potential_type.collision:
+			did_collide = true
+		if not is_player and did_collide:
+			# mob cannot move into this space.
+			return
+		if is_player and gs.check_cheat(gs.cheat_names.NO_COLLISION) == false and did_collide:
+			# player cannot move into this space.
+			return
+		# update character location
+		location = potential_location
 
 class MobType extends Character:
 	func _init(_glevel, _clevel, _location):
@@ -677,9 +653,9 @@ class MobType extends Character:
 		color = ['cc0000']
 		hittable = true
 	func dead():
-		glevel.board.setv(location.x, location.y, glevel.std[FloorType])
-		var idx = glevel.mobs.find(self)
-		glevel.mobs.remove_at(idx)
+		gs.level.board.setv(location.x, location.y, gs.level.std[FloorType])
+		var idx = gs.level.mobs.find(self)
+		gs.level.mobs.remove_at(idx)
 	func hash():
 		return 6
 
@@ -702,10 +678,49 @@ class PlayerType extends Character:
 	func get_health_str():
 		return "HP:" + str(health) + "/" + str(max_health)
 	func dead():
-		glevel.gs.history.addline(object_name + " died.")
+		gs.history.addline(object_name + " died.")
 		# TODO death screen
 		# for now, hard code a restart
-		glevel.gs.use_level.emit(1)
+		gs.use_level.emit(1)
+	func attack(other: Character):
+		# hard code being counter attacked for now
+		super(other)
+		other.attack(self)
+	func move(change: Vector2, is_player=true):
+		# moves player, then activates Other Stuff (tm)
+		var potential_location = location + change
+		var potential_type = gs.level.board.getv(potential_location.x, potential_location.y)
+
+		# check to see if we walked into a mob
+		var attacked = false
+		var potential_mob = null
+		var mobs = gs.level.mobs
+		for mob in mobs:
+			if mob.location == potential_location:
+				potential_mob = mob
+		if potential_mob != null:
+			# ATTACK!
+			attack(potential_mob)
+			#gs.history.add_line(result)
+			attacked = true
+
+		if not attacked:
+			# if we attacked, there is no movement.
+			# but if we did not attack, let's check for movement.
+			super(change, is_player)
+
+		if potential_type == gs.level.std[DoorType]:
+			gs.history.add_line("you enter the doorway.")
+		if potential_type == gs.level.std[UpStairsType]:
+			gs.history.add_line("the stairs no longer look safe to use.")
+		if potential_type == gs.level.std[DownStairsType]:
+			if len(mobs) == 0:
+				gs.history.add_line("you carefully climb down the crumbling stairs.")
+				# TODO NEW LEVEL SIGNAL!
+				#var new_level = Level.new(gs, kill_me_now_plz, gs.my_rng, actual_level+1, renderer, location)
+				#gs.use_level.emit(new_level)
+			else:
+				gs.history.add_line("an invisible force stops your progress.")
 	func hash():
 		return 7
 #endregion
@@ -803,7 +818,7 @@ class Renderer:
 			viewport = get_active_viewport()
 
 		# align player's location as center. level center is always (0,0)
-		var player_loc = level.player_location
+		var player_loc = gs.player_obj.location
 		var delta = text_center - player_loc
 		#text_shape
 
@@ -925,12 +940,12 @@ class GameState:
 		var starting_location = Vector2(0,0)
 		# set some new level
 		var new_level = Level.new(self, kill_me_now_plz, my_rng, curr_level, renderer, starting_location)
-		player_obj = PlayerType.new(new_level, 1, starting_location)
+		player_obj = PlayerType.new(self, 1, starting_location)
 		use_level.emit(new_level)
 
 	func set_level(_level):
 		level = _level
-		player_obj.glevel = level
+		#player_obj.glevel = level # no longer necessary?
 		level.draw(false)
 
 	func enable_help():
@@ -1040,15 +1055,16 @@ func _input(event: InputEvent) -> void:
 	# Play Commands
 	elif gs.current_scene == gs.scenes.PLAY:
 		if event.is_action_pressed("ui_up"):
-			gs.level.move_player(Vector2(-1,0))
+			gs.player_obj.move(Vector2(-1,0))
 		if event.is_action_pressed("ui_down"):
-			gs.level.move_player(Vector2(1,0))
+			gs.player_obj.move(Vector2(1,0))
 		if event.is_action_pressed("ui_left"):
-			gs.level.move_player(Vector2(0,-1))
+			gs.player_obj.move(Vector2(0,-1))
 		if event.is_action_pressed("ui_right"):
-			gs.level.move_player(Vector2(0,1))
+			gs.player_obj.move(Vector2(0,1))
 		if event.is_action_pressed("ui_wait"):
-			gs.level.move_player(Vector2(0,0))
+			gs.history.add_line('you wait.')
+			gs.player_obj.move(Vector2(0,0))
 		if event.is_action_pressed("ui_new"):
 			gs.new_game()
 		if event.is_action_pressed("ui_restart"):
